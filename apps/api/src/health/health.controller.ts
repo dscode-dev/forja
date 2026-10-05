@@ -1,3 +1,5 @@
+import { FinanceService } from '../finance/finance.service';
+import { PlanningService } from '../planning/planning.service';
 import {
   Controller,
   Get,
@@ -12,6 +14,8 @@ import { AUTH_CONTROL, AuthControl } from '../platform/auth-control';
 export class HealthController {
   constructor(
     private readonly database: Database,
+    private readonly finance: FinanceService,
+    private readonly planning: PlanningService,
     private readonly crypto: CryptoPlatform,
     @Inject(AUTH_CONTROL) private readonly auth: AuthControl,
   ) {}
@@ -26,7 +30,9 @@ export class HealthController {
     if (
       !(await this.database.ready()) ||
       !(await this.crypto.ready()) ||
-      !(await this.auth.ready())
+      !(await this.auth.ready()) ||
+      !(await this.finance.ready()) ||
+      !(await this.planning.ready())
     )
       throw new ServiceUnavailableException();
     return { status: 'ok' };

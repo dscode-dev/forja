@@ -7,7 +7,9 @@ export type SafeEvent =
   | 'http.request.failed'
   | 'migration.completed'
   | 'migration.failed'
-  | 'identity.authentication';
+  | 'identity.authentication'
+  | 'data.integrity'
+  | 'finance.anchor';
 // Identity events carry no principal, profile, provider response or token payload.
 export type SafeResult = 'success' | 'unavailable' | 'rejected';
 @Injectable()
@@ -26,6 +28,8 @@ export class SafeLogger implements LoggerService {
       'migration.completed',
       'migration.failed',
       'identity.authentication',
+      'data.integrity',
+      'finance.anchor',
     ];
     if (
       !events.includes(event) ||

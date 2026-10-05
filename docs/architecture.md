@@ -22,7 +22,7 @@ Platform capabilities provide persistence, configuration, cryptographic services
 
 Each module owns its writes and exposes application contracts. No foreign repository/table writes, shared mutable domain entities or circular module imports. Cross-module access passes authorization and returns purpose-specific data. Contracts are introduced for real consumers, not speculative extension points.
 
-Planning requests settlements through Finance commands; Finance never depends on Planning. A settlement identity/result lets Planning reconcile its item idempotently. The [financial processing contract](domains/financial.md) defines atomic settlement and retry/recovery; the implementing PR specifies the concrete unit-of-work API.
+Planning requests settlements through Finance commands; Finance never depends on Planning. A settlement identity/result lets Planning reconcile its item idempotently. Finance exposes a local unit of work to Planning for atomic full realization; each owns its table writes. The [financial processing contract](domains/financial.md) defines atomic settlement and retry/recovery; the implementing PR specifies the concrete unit-of-work API.
 
 Reporting owns no financial truth. Game and AI cannot invoke financial mutations. No module may bypass the [financial invariants](domains/financial.md). Direct database access from mobile is forbidden.
 

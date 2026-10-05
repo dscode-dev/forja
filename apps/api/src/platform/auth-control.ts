@@ -108,7 +108,7 @@ export class LocalAuthControl implements AuthControl {
       if (
         row?.id !== authority ||
         row.environment !== environment ||
-        this.db.prepare('PRAGMA user_version').get()?.user_version !== 3
+        this.db.prepare('PRAGMA user_version').get()?.user_version !== 4
       )
         throw new Error();
       this.db.prepare('SELECT id FROM auth_sessions LIMIT 0').all();

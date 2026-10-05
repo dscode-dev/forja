@@ -7,6 +7,7 @@ import {
   ServiceUnavailableException,
   OnModuleInit,
 } from '@nestjs/common';
+import { PrivacyErasure } from '../platform/privacy-erasure';
 import { randomUUID } from 'node:crypto';
 import { CONFIG, RuntimeConfig } from '../config/config';
 import { Database, Transaction } from '../platform/database';
@@ -62,6 +63,7 @@ export type SecurityEvent =
 export class IdentityService implements OnModuleInit {
   constructor(
     private readonly database: Database,
+    private readonly erasure: PrivacyErasure,
     private readonly crypto: CryptoPlatform,
     @Inject(AUTH_CONTROL) private readonly control: AuthControl,
     private readonly oidc: OidcProvider,
@@ -386,6 +388,7 @@ export class IdentityService implements OnModuleInit {
             ...values,
           };
         },
+        tx,
       );
     });
   }
@@ -463,6 +466,7 @@ export class IdentityService implements OnModuleInit {
     await this.crypto.lifecycle.transition(userId, 'deleted');
     await this.database.transaction(async (tx) => {
       await this.owner(tx, userId);
+      await this.erasure.erase(tx, userId);
       await tx.query('DELETE FROM app.user_profiles WHERE user_id=$1', [
         userId,
       ]);

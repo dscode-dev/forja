@@ -26,3 +26,5 @@ PR-00.SEC decisions resolve the security questions deferred by ADR 0001; PR-00 s
 - [0011: persistence and independent development custody](0011-persistence-crypto-development-adapters.md) — Accepted within PR-02 delegated scope; production adapter gates remain open.
 
 - [0012: OIDC and independent opaque sessions](0012-oidc-independent-sessions.md) — Accepted within PR-03 delegated scope; real provider/custody deployment gates remain open.
+
+- [0013: exact ledger and atomic realization](0013-financial-ledger-and-atomic-realization.md) — Accepted within PR-04.A delegated scope; production/maintenance gates remain open.

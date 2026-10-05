@@ -33,7 +33,17 @@ export interface Admission extends KeyIdentity {
   readonly mode: 'encrypt' | 'decrypt' | 'maintenance';
 }
 export type LifecycleResult<T> = T | Promise<T>;
+export interface FinancialAnchor {
+  readonly seq: number;
+  readonly digest: string;
+}
 export interface KeyLifecycleStore {
+  anchorHead(userId: string): LifecycleResult<FinancialAnchor | undefined>;
+  anchor(
+    userId: string,
+    seq: number,
+    envelopeDigest: string,
+  ): LifecycleResult<void>;
   createPending(
     userId: string,
     identityDigest: string,

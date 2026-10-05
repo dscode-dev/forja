@@ -1,6 +1,6 @@
 # Security, privacy and cryptographic architecture
 
-Canonical policy for PR-00.SEC. Implementation adapters/conventions and their production gates are owned by [persistence](persistence.md); Identity/session behavior is owned by [Identity](identity.md); executed evidence stays in [PR-02](prs/PR-02.md) and [PR-03](prs/PR-03.md). Detailed financial processing belongs to the [financial domain](domains/financial.md), model context to the [AI domain](domains/ai.md). [Threat model](security/threat-model.md) records guarantees/residual risks; [verification contract](security/verification.md) defines implementation evidence. Policy is finalized for downstream specifications; this is not evidence that an implementation or deployment has passed security verification.
+Canonical policy for PR-00.SEC. Implementation adapters/conventions and their production gates are owned by [persistence](persistence.md); Identity/session behavior is owned by [Identity](identity.md); executed evidence stays in [PR-02](prs/PR-02.md), [PR-03](prs/PR-03.md) and [PR-04.A](prs/PR-04.A.md). Detailed financial processing belongs to the [financial domain](domains/financial.md), model context to the [AI domain](domains/ai.md). [Threat model](security/threat-model.md) records guarantees/residual risks; [verification contract](security/verification.md) defines implementation evidence. Policy is finalized for downstream specifications; this is not evidence that an implementation or deployment has passed security verification.
 
 ## Trust and protection
 

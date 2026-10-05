@@ -72,6 +72,7 @@ try {
       'dist-test/test/integration/platform.test.js',
       'dist-test/test/integration/persistence.test.js',
       'dist-test/test/integration/identity.test.js',
+      'dist-test/test/integration/finance.test.js',
     ],
     { stdio: 'inherit', env },
   );

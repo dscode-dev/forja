@@ -70,3 +70,9 @@ For an existing PR-02 environment, rebuild tooling/API (`docker compose --env-fi
 OIDC_ISSUER, OIDC_CLIENT_ID and OIDC_REDIRECT_URI in local .env are public operator-approved enrollment settings. Configure all three together; issuer/endpoints must use verified HTTPS, the public client must support RS256, S256 PKCE, opaque non-email subjects, auth_time/max_age and the exact callback. No client secret is accepted/needed. Until enrollment exists, auth returns unavailable while operational health still validates platform dependencies. [Identity](identity.md) owns behavior; [wire contracts](contracts/identity.md) own mobile payloads.
 
 The existing integration command now generates ephemeral TLS/signing fixtures solely inside tests and exercises the real OIDC client and PostgreSQL. Test CA trust is limited to that test subprocess; no runtime insecure TLS option or seeded test provider exists. Safe audit retention cleanup runs on audited operations; idle deployments require an approved scheduled retention operation before production.
+
+## Existing PR-03 environment → PR-04.A
+
+Rebuild `docker compose --env-file .env --file infra/compose.yaml build tools api`, then run `scripts/dev crypto-bootstrap`, `scripts/dev migrate`, `scripts/dev run`. The explicit independent control upgrade to schema 4 preserves nonce/session authority; no reset/clean is needed. Production adapters remain gated.
+
+The pinned PostgreSQL image also supplies pg_dump 18.6 plus isolated libraries in /opt/forja-pg-tools for test-only logical dump inspection. Test subprocesses scope its library path and private temporary PGPASSFILE; password/dump contents never enter argv or tool output. No new runtime service/package or production DB privilege is introduced.

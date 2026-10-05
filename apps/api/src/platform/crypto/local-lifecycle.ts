@@ -46,7 +46,7 @@ export class LocalLifecycle implements KeyLifecycleStore {
         const priorVersion = Number(
           this.db.prepare('PRAGMA user_version').get()?.user_version,
         );
-        if (![0, 1, 2, 3].includes(priorVersion)) throw new Error();
+        if (![0, 1, 2, 3, 4].includes(priorVersion)) throw new Error();
         this.atomic(() => {
           if (
             priorVersion === 1 &&
@@ -66,7 +66,8 @@ export class LocalLifecycle implements KeyLifecycleStore {
             CREATE TABLE IF NOT EXISTS wrapping (scope TEXT PRIMARY KEY, count INTEGER NOT NULL DEFAULT 0, created INTEGER NOT NULL);
             CREATE TABLE IF NOT EXISTS journal (sequence INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, key_id TEXT, event TEXT NOT NULL, created INTEGER NOT NULL);
             ${authSchema}
-            PRAGMA user_version=3;`);
+            CREATE TABLE IF NOT EXISTS financial_anchors (user_id TEXT NOT NULL, seq INTEGER NOT NULL, digest TEXT NOT NULL, created INTEGER NOT NULL, PRIMARY KEY(user_id,seq));
+            PRAGMA user_version=4;`);
           if (!this.db.prepare('SELECT id FROM authority').get())
             this.db
               .prepare('INSERT INTO authority VALUES (?,?)')
@@ -79,12 +80,49 @@ export class LocalLifecycle implements KeyLifecycleStore {
       if (
         authority?.id !== authorityId ||
         authority.environment !== environment ||
-        this.db.prepare('PRAGMA user_version').get()?.user_version !== 3
+        this.db.prepare('PRAGMA user_version').get()?.user_version !== 4
       )
         throw new Error();
     } catch {
       throw new PlatformFailure('unavailable');
     }
+  }
+  anchorHead(userId: string): { seq: number; digest: string } | undefined {
+    uuid(userId);
+    try {
+      const row = this.db
+        .prepare(
+          'SELECT seq,digest FROM financial_anchors WHERE user_id=? ORDER BY seq DESC LIMIT 1',
+        )
+        .get(userId);
+      return row
+        ? { seq: Number(row.seq), digest: String(row.digest) }
+        : undefined;
+    } catch {
+      throw new PlatformFailure('unavailable');
+    }
+  }
+  anchor(userId: string, seq: number, envelopeDigest: string): void {
+    uuid(userId);
+    positive(seq);
+    digest(envelopeDigest);
+    this.atomic(() => {
+      const user = this.db
+        .prepare('SELECT terminal,fenced FROM users WHERE user_id=?')
+        .get(userId);
+      if (!user || user.terminal !== null || user.fenced !== 0)
+        throw new PlatformFailure('fenced');
+      const existing = this.db
+        .prepare(
+          'SELECT digest FROM financial_anchors WHERE user_id=? AND seq=?',
+        )
+        .get(userId, seq);
+      if (existing && existing.digest !== envelopeDigest)
+        throw new PlatformFailure('integrity');
+      this.db
+        .prepare('INSERT OR IGNORE INTO financial_anchors VALUES (?,?,?,?)')
+        .run(userId, seq, envelopeDigest, Date.now());
+    });
   }
   private atomic<T>(operation: () => T): T {
     try {
@@ -540,6 +578,7 @@ export class LocalLifecycle implements KeyLifecycleStore {
   }
   ready(): boolean {
     try {
+      this.db.prepare('SELECT seq,digest FROM financial_anchors LIMIT 0').all();
       return this.db.prepare('PRAGMA quick_check').get()?.quick_check === 'ok';
     } catch {
       return false;

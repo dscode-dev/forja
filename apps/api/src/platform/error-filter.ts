@@ -15,11 +15,15 @@ interface SafeResponse {
 export class SafeErrorFilter implements ExceptionFilter {
   constructor(private readonly logger: SafeLogger) {}
   catch(exception: unknown, host: ArgumentsHost): void {
+    if (exception instanceof PlatformFailure && exception.code === 'integrity')
+      this.logger.event('data.integrity', 'unavailable');
     const candidate =
       exception instanceof HttpException
         ? exception.getStatus()
         : exception instanceof PlatformFailure
           ? {
+              bounded_period: 422,
+              not_found: 404,
               invalid: 400,
               unavailable: 503,
               conflict: 409,
@@ -48,11 +52,14 @@ export class SafeErrorFilter implements ExceptionFilter {
     );
     response.status(status).json({
       code:
-        status === 503
-          ? 'UNAVAILABLE'
-          : status >= 500
-            ? 'INTERNAL_ERROR'
-            : 'REQUEST_REJECTED',
+        exception instanceof PlatformFailure &&
+        exception.code === 'bounded_period'
+          ? 'BOUNDED_PERIOD_REQUIRED'
+          : status === 503
+            ? 'UNAVAILABLE'
+            : status >= 500
+              ? 'INTERNAL_ERROR'
+              : 'REQUEST_REJECTED',
     });
   }
 }

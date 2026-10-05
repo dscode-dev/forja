@@ -1,3 +1,5 @@
+import { EncryptedRecord } from './encrypted-record';
+import { PrivacyErasure } from './privacy-erasure';
 import { Global, Module } from '@nestjs/common';
 import { CONFIG, loadConfig } from '../config/config';
 import { Database } from './database';
@@ -12,6 +14,8 @@ import { readLocalCustody } from './crypto/local-provider';
   providers: [
     { provide: CONFIG, useFactory: () => loadConfig() },
     Database,
+    PrivacyErasure,
+    EncryptedRecord,
     CryptoPlatform,
     {
       provide: AUTH_CONTROL,
@@ -25,6 +29,14 @@ import { readLocalCustody } from './crypto/local-provider';
     },
     { provide: SafeLogger, useFactory: () => new SafeLogger() },
   ],
-  exports: [CONFIG, Database, CryptoPlatform, SafeLogger, AUTH_CONTROL],
+  exports: [
+    PrivacyErasure,
+    EncryptedRecord,
+    CONFIG,
+    Database,
+    CryptoPlatform,
+    SafeLogger,
+    AUTH_CONTROL,
+  ],
 })
 export class PlatformModule {}

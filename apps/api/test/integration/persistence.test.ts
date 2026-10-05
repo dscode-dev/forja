@@ -121,7 +121,7 @@ test('platform migration replays without schema effects; destructive key rollbac
   };
   try {
     assert.equal((await runner(options)).length, 0);
-    await assert.rejects(runner({ ...options, direction: 'down', count: 3 }));
+    await assert.rejects(runner({ ...options, direction: 'down', count: 5 }));
     assert.ok(
       (await pool.query("SELECT to_regclass('app.user_data_keys') AS name"))
         .rows[0]?.name,

@@ -1,4 +1,6 @@
 export type FailureCode =
+  | 'bounded_period'
+  | 'not_found'
   | 'invalid'
   | 'unavailable'
   | 'conflict'

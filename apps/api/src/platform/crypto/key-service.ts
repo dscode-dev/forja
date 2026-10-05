@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { Database, Transaction } from '../database';
+import { Database, Transaction, SqlExecutor } from '../database';
 import { PlatformFailure } from '../failure';
 import {
   Admission,
@@ -38,9 +38,10 @@ export class UserKeyService {
     identityDigest: string,
     mode: Admission['mode'],
     operation: (scope: KeyScope) => Promise<T>,
+    sql?: SqlExecutor,
   ): Promise<T> {
     return this.run(() =>
-      this.withKeyImpl(identity, identityDigest, mode, operation),
+      this.withKeyImpl(identity, identityDigest, mode, operation, sql),
     );
   }
   rewrap(identity: KeyIdentity, identityDigest: string): Promise<void> {
@@ -117,8 +118,9 @@ export class UserKeyService {
     identityDigest: string,
     mode: Admission['mode'],
     operation: (scope: KeyScope) => Promise<T>,
+    sql?: SqlExecutor,
   ): Promise<T> {
-    const record = await this.repository.get(identity);
+    const record = await this.repository.get(identity, sql);
     const lease = await this.lifecycle.admit(
       identity,
       identityDigest,
