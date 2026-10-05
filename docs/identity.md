@@ -1,0 +1,33 @@
+# Identity and authorization
+
+Canonical PR-03 behavior. [Security policy](security.md) owns crypto, classification, session maxima, mobile storage and retention; [persistence](persistence.md) owns crypto/transaction mechanics. Identity owns accounts, profiles, authentication and session authorization, not financial onboarding.
+
+## Authentication
+
+Use OIDC Authorization Code with S256 PKCE and the OS external browser; no embedded login/password/social-login implementation. A configured HTTPS issuer, public client ID and exact native redirect identify the trusted provider. openid-client validates issuer/audience/expiry/nonce and the token response; additionally verify ID-token signatures via its JWKS support. Only printable bounded opaque non-email subjects are accepted. Never fetch/store provider profiles, passwords, authorization codes, ID/access/refresh tokens or credentials from that provider.
+
+The mobile client generates a verifier; POST /v1/auth/begin sends its S256 challenge and login/register intent. Server returns a five-minute challenge, state, nonce and authorization URL. Completion supplies challenge ID, code, verifier, state and nonce; independently stored digests/PKCE context are checked and challenge consumed before exchange. Lost/failed completion starts a fresh flow. Provider authentication max_age=300 supplies a fresh auth_time; no arbitrary ID-token import endpoint. The configured redirect never comes from a request.
+
+OIDC settings are optional only to keep development infrastructure usable before a real provider exists: unconfigured authentication returns unavailable, never a fake identity. Production custody already blocks startup; real provider configuration/conformance, exact callback ownership, logout behavior, provider MFA/abuse/recovery and operational/legal review remain deployment gates.
+
+## Account and profile
+
+Random UUID accounts map a unique allowlisted issuer/opaque subject to immutable internal ownership. Registration inserts pending, provisions/reconciles the per-user DEK, authenticates unwrap, then activates atomically with its encrypted initial profile. No pending account gets a session. Retry after infrastructure failure requires fresh OIDC proof: reconcile the persisted key or create a replacement only when no persisted wrap exists; orphan external pending allocations stay denied. Already active duplicate registration is rejected after identity proof; login never creates an account.
+
+Profile: displayName is encrypted S2 (optional, maximum 80 characters); locale and IANA timezone are the approved restricted S2 metadata; preferredCurrency ISO 4217 is S1 and conveys no financial amount; onboardingState is technical profile setup, not financial eligibility. No biography/email/phone/avatar/provider attributes are collected. Defaults only specify rendering: pt-BR, UTC, BRL, pending. Ciphertext AAD binds user/profile UUID, slot, revision, DEK and the plaintext locale/timezone/currency/onboarding metadata; changing either ciphertext or metadata fails authentication. Updates require the current revision; server increments it. Client cannot change owner, key or account status.
+
+Account states: pending, active, suspended, deletion-requested, deleted. Suspension is an explicit trusted-server operation that independently denies sessions and fences/revokes data keys; automatic reactivation/recovery is not implemented. Deletion requires fresh authenticated step-up, records independent denial first, fences/drains keys and purges live profile/wraps, then marks deleted and clears the live issuer/subject lookup. A later explicit registration may create a fresh account/key; it never revives the deleted owner or its history. Interrupted purge stays denied and retries idempotently from its independent intent at backend startup; a drain/repair conflict blocks startup until resolved. No immediate crypto-shredding claim: retained backups and shared KEKs follow security policy. Broader domain erasure is added when those domains exist.
+
+## Sessions and authorization
+
+Access tokens: opaque 256-bit CSPRNG bearer, five minutes. Refresh: independently generated 256-bit bearer, seven-day idle / 30-day absolute limit, rotated on every use; replay revokes the entire session family including its current access token. Tokens are returned only once, digests compared in constant time, no automatic refresh retry after lost response. Logout revokes the current session immediately; revoke-all needs step-up within five minutes. Refresh never extends authentication freshness. Device management can later use opaque session IDs; device names/fingerprints are not collected.
+
+Independent control stores session token digests, verified binding, expiry/revocation and spent refresh verifiers; financial PG edits cannot create sessions, roll back revocations or choose an authoritative principal. Local adapter shares the independently protected lifecycle database, explicit schema upgrades only. All token access rechecks the current external identity/key/account gate; profile access then validates PG ownership and key binding before decrypt. Future modules receive a trusted principal via Identity's application contract; never accept owner IDs in client commands or invent system users. No RBAC/admin HTTP interface exists.
+
+Profile PG RLS plus owner-filtered queries and compound owner/key foreign keys provide defense in depth. RLS context is transaction-local, set only after verified principal resolution; it is not the identity trust anchor. Deletion/suspension services operate on a verified principal or a purpose-specific trusted operator command, never a DB-editable role.
+
+## Bounded transport and evidence
+
+Strict body schemas, JSON limit 8 KiB, bounded header/token/code sizes and no-store responses. Auth begin/complete/refresh use durable global rate limits; authenticated profile/security changes additionally use per-user buckets. No IP/device/private identifiers are persisted for throttling. Edge per-network abuse controls and sizing are deployment prerequisites: global limits intentionally fail closed under load and cannot provide fair access under targeted denial of service.
+
+Security audit stores only opaque IDs, bounded event/result and timestamps, with 90-day retention cleanup on audited operations (scheduled idle-deployment cleanup is a production operations gate); no issuer/subject/profile/token/provider error payload. Logger allowlists remain event-only. Challenge/bucket expiry and expired session/verifier cleanup run in bounded control operations. Verification evidence belongs to [PR-03](prs/PR-03.md), not this behavior contract.

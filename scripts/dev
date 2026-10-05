@@ -1,0 +1,53 @@
+#!/bin/sh
+set -eu
+cd "$(dirname "$0")/.."
+compose() { docker compose --env-file .env --file infra/compose.yaml "$@"; }
+case "${1:-help}" in
+  setup)
+    python3 - <<'PY'
+from pathlib import Path
+import secrets, shutil, os, re
+p = Path('.local/secrets')
+p.mkdir(parents=True, exist_ok=True, mode=0o700)
+p.chmod(0o700)
+for name in ('admin-password', 'api-password', 'migration-password'):
+    target = p / name
+    if not target.exists():
+        with target.open('x') as f:
+            f.write(secrets.token_hex(32) + '\n')
+    target.chmod(0o600)
+if not Path('.env').exists(): shutil.copyfile('.env.example', '.env')
+settings = Path('.env').read_text()
+for name, value in [('LOCAL_UID', os.getuid()), ('LOCAL_GID', os.getgid())]:
+    settings = re.sub(rf'^{name}=.*\n?', '', settings, flags=re.M)
+    settings += f'{name}={value}\n'
+Path('.env').write_text(settings)
+Path('.env').chmod(0o600)
+print('Local secret files/settings ready; existing passwords preserved.')
+PY
+    ;;
+  crypto-open) python3 scripts/development-custody.py open ;;
+  crypto-bootstrap) compose run --rm tools sh -c 'npm run build && node dist/crypto-bootstrap.js' ;;
+  crypto-close) compose stop api; python3 scripts/development-custody.py close ;;
+  install)
+    compose run --rm --no-deps --user root tools chown -R "$(id -u):$(id -g)" /workspace/apps/api/node_modules
+    compose run --rm --no-deps tools npm ci
+    ;;
+  up) compose up --detach --wait postgres ;;
+  run) compose up --detach --wait api ;;
+  check)
+    compose run --rm tools sh -c 'npm run build && npm run lint && npm run format:check && npm run typecheck && npm test'
+    python3 scripts/validate-mobile.py
+    ;;
+  lint|typecheck|test|build|format:check) compose run --rm tools npm run "$1" ;;
+  integration) compose run --rm tools npm run test:integration ;;
+  migrate) compose run --rm tools npm run migrate ;;
+  down) compose down; python3 scripts/development-custody.py close ;;
+  clean)
+    if [ "${2:-}" != '--confirm' ]; then echo 'Deletes only Forja development database/dependency volumes; run scripts/dev clean --confirm to authorize.' >&2; exit 2; fi
+    compose down --volumes
+    ;;
+  config) compose config --quiet ;;
+  logs) compose logs --tail=100 api ;;
+  *) echo 'Usage: scripts/dev setup|crypto-open|crypto-close|crypto-bootstrap|install|up|run|check|lint|typecheck|test|build|format:check|integration|migrate|down|clean --confirm|config|logs' ;;
+esac

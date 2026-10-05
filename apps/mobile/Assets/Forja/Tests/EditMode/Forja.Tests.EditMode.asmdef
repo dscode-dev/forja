@@ -1,0 +1,13 @@
+{
+  "name": "Forja.Tests.EditMode",
+  "references": [
+    "Forja.Core"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "optionalUnityReferences": [
+    "TestAssemblies"
+  ],
+  "autoReferenced": false
+}

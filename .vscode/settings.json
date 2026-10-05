@@ -1,0 +1,1 @@
+{"files.exclude":{"**/Library":true,"**/Temp":true},"search.exclude":{"**/Library":true,"**/node_modules":true,"**/dist":true,"**/dist-test":true}}

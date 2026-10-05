@@ -1,0 +1,10 @@
+{
+  "name": "Forja.Infrastructure",
+  "rootNamespace": "Forja.Infrastructure",
+  "references": [
+    "Forja.Core",
+    "Forja.Application"
+  ],
+  "autoReferenced": true,
+  "noEngineReferences": false
+}

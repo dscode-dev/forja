@@ -1,0 +1,10 @@
+{
+  "name": "Forja.Presentation",
+  "rootNamespace": "Forja.Presentation",
+  "references": [
+    "Forja.Application",
+    "Forja.Infrastructure"
+  ],
+  "autoReferenced": true,
+  "noEngineReferences": false
+}
