@@ -1,3 +1,4 @@
+import { WorkService } from '../work/work.service';
 import { FinanceService } from '../finance/finance.service';
 import { PlanningService } from '../planning/planning.service';
 import {
@@ -16,6 +17,7 @@ export class HealthController {
     private readonly database: Database,
     private readonly finance: FinanceService,
     private readonly planning: PlanningService,
+    private readonly work: WorkService,
     private readonly crypto: CryptoPlatform,
     @Inject(AUTH_CONTROL) private readonly auth: AuthControl,
   ) {}
@@ -32,7 +34,8 @@ export class HealthController {
       !(await this.crypto.ready()) ||
       !(await this.auth.ready()) ||
       !(await this.finance.ready()) ||
-      !(await this.planning.ready())
+      !(await this.planning.ready()) ||
+      !(await this.work.ready())
     )
       throw new ServiceUnavailableException();
     return { status: 'ok' };

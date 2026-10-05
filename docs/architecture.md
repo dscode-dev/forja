@@ -13,7 +13,7 @@ Redis requires a documented technical need; pgvector requires a documented seman
 | Identity | User identity, authentication and authorization context | Platform capabilities |
 | Finance | Accounts, authoritative balances, received income/completed debits, financial history, debts and settlements | Identity, platform capabilities |
 | Planning | Scheduled debits, receivables, predicted income, reserve/goal plans, deterministic projections and required-income calculations | Identity, Finance public read contracts, Work read contracts |
-| Work | Work/career profile, availability and user-confirmed assumptions | Identity |
+| Work | [Work/career profile, availability, declared capacity and versioned user-confirmed assumptions](domains/work.md) | Identity; canonical Finance money value functions only |
 | Game | Character state, missions, progression and virtual rewards | Identity, Finance/Planning/Work public read contracts or committed facts |
 | Reporting | Period selection, deterministic financial summaries and report provenance | Identity, Finance/Planning/Work public read contracts |
 | AI | Character advice, model context preparation and inference orchestration | Identity, approved minimized read contracts from Reporting/Planning/Work/Game |

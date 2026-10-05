@@ -73,6 +73,7 @@ try {
       'dist-test/test/integration/persistence.test.js',
       'dist-test/test/integration/identity.test.js',
       'dist-test/test/integration/finance.test.js',
+      'dist-test/test/integration/work.test.js',
     ],
     { stdio: 'inherit', env },
   );

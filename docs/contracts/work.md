@@ -1,0 +1,11 @@
+# Work v1 contract
+
+All routes require the existing Forja bearer session, return Cache-Control: no-store and resolve owner exclusively from the verified principal. No user ID, key, ciphertext or persistence entity input. Domain semantics: [Work](../domains/work.md); auth/errors: [Identity](identity.md).
+
+- GET /v1/work/profile?revision=N: current or positive immutable revision, 404 if absent. DTO `{revision, recordedAt, effectiveAt, profile}`.
+- PUT /v1/work/profile: strict `{expectedRevision, profile}`. expectedRevision is a nonnegative integer. Full replacement, same DTO response; stale/create collision 409, invalid 400. After uncertain outcome fetch current and reconcile; no automatic blind retry or duplicate history. No partial PATCH/default profile.
+- GET /v1/work/capacity?from=YYYY-MM-DD&through=YYYY-MM-DD[&revision=N][&projectCount=N]: explicit bounded horizon, 400 invalid or overflow, 404 missing profile/revision. Same DTO provenance plus formulaVersion, timezone=UTC, currency, availableMinutesPerWeek, eligibleDays, projectCount, component estimates, knownSubtotalMinor, nullable totalMinor and assumptions. No settled-balance field.
+
+profile requires exactly: workStatus, occupation, workModel, earningModel, currency, components, availability, skills, desiredDirection, careerTarget, notes. Nullable text fields: occupation (120), desiredDirection/careerTarget (240), notes (500). Non-null strings are NFC, trimmed/nonempty, no controls. skills: array of 0–20 distinct strings, 80 each. components: array of `{kind, amountMinor}`. availability: `{availableMinutesPerDay, preferredWeekdays, maximumMinutesPerWeek, committedMinutesPerWeek}`; committedMinutesPerWeek is null or integer. Required nulls are explicit; unknown properties rejected throughout. Numeric query parameters are canonical decimal integers; money stays strings. Supported kinds, bounds and formulas belong to the domain document.
+
+No history listing/edit/delete endpoint, public AI-context endpoint, arbitrary owner read or profile-driven financial command. Application read contract includes authorized exact-revision reads for future Planning provenance and minimized career context subject to future AI policy enforcement.
