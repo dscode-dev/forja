@@ -31,7 +31,7 @@ Daily/weekly/monthly/custom periods need explicit timezone and boundary rules. S
 
 ## Decisions required by dependent PRs
 
-PR-04.A finalizes the ledger and basic expectation semantics below. Before later Planning: expected-item revision/partial realization, reserve allocations, projection and required-income formulas. Before Reporting: period rules, restatement and formula provenance. Financial-data encryption follows the finalized [security contract](../security.md).
+PR-04.A finalizes the ledger and basic expectation semantics below. [Planning goals/required-income rules](planning.md) are established by PR-05.B; expected-item revision/partial realization, partial reserve allocations and transfers remain separately scoped. Before Reporting: period rules, restatement and formula provenance. Financial-data encryption follows the finalized [security contract](../security.md).
 
 ## Encrypted financial state and bounded reads
 

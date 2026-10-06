@@ -30,3 +30,9 @@ PR-00.SEC decisions resolve the security questions deferred by ADR 0001; PR-00 s
 - [0013: exact ledger and atomic realization](0013-financial-ledger-and-atomic-realization.md) — Accepted within PR-04.A delegated scope; production/maintenance gates remain open.
 
 - [0014: Work revisions and declared capacity](0014-work-revisions-and-declared-capacity.md) — Accepted within PR-05.A delegated scope; production gates unchanged.
+
+- [0015: exclusive goal funding and frozen calculations](0015-exclusive-goal-funding-and-frozen-calculations.md) — Accepted within PR-05.B delegated scope; production gates unchanged.
+
+- [0016: native iOS session and memory-only shell](0016-native-ios-session-and-memory-only-shell.md) — Accepted within PR-06; integration/device gates remain open.
+
+- [0017 — 2D atelier and memory-only RPG presentation](0017-2d-atelier-and-memory-only-presentation.md).

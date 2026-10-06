@@ -26,6 +26,7 @@ def visit(name):
     if name in done: return
     stack.add(name)
     for dependency in assemblies[name]['references']:
+        if dependency == 'Unity.Newtonsoft.Json': continue
         assert dependency in assemblies, dependency
         visit(dependency)
     stack.remove(name)
@@ -52,5 +53,6 @@ player = (root / 'ProjectSettings/ProjectSettings.asset').read_text()
 assert 'appleEnableAutomaticSigning: 0' in player
 assert '    iPhone: com.darlan.forja.dev' in player
 assert 'insecureHttpOption: 0' in player
+assert 'activeInputHandler: 0' in player
 print(f'PASS static Unity structure: {len(assemblies)} assemblies; {len(guids)} unique asset GUIDs; scene/build references; version and security settings')
-print('STATIC ONLY: this command does not establish native compilation/tests/build/device success; executed gate evidence is recorded in docs/prs/PR-01.md')
+print('STATIC ONLY: this command does not establish native compilation/tests/build/device success; executed gate evidence is recorded in docs/prs/PR-07.md (PR-01 holds historical baseline)')

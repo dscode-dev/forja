@@ -3,7 +3,8 @@
   "rootNamespace": "Forja.Presentation",
   "references": [
     "Forja.Application",
-    "Forja.Infrastructure"
+    "Forja.Infrastructure",
+    "Forja.Core"
   ],
   "autoReferenced": true,
   "noEngineReferences": false

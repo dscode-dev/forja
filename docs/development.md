@@ -76,3 +76,5 @@ The existing integration command now generates ephemeral TLS/signing fixtures so
 Rebuild `docker compose --env-file .env --file infra/compose.yaml build tools api`, then run `scripts/dev crypto-bootstrap`, `scripts/dev migrate`, `scripts/dev run`. The explicit independent control upgrade to schema 4 preserves nonce/session authority; no reset/clean is needed. Production adapters remain gated.
 
 The pinned PostgreSQL image also supplies pg_dump 18.6 plus isolated libraries in /opt/forja-pg-tools for test-only logical dump inspection. Test subprocesses scope its library path and private temporary PGPASSFILE; password/dump contents never enter argv or tool output. No new runtime service/package or production DB privilege is introduced.
+
+PR-06 mobile configuration/native checks are canonical in [mobile workflow](mobile-development.md#runtime-ownership-and-configuration). Unity packages now include Newtonsoft Json 3.2.1 and built-in UI Toolkit; native resolution is tracked in the package lock. Device connectivity requires its own trusted HTTPS origin; the existing Docker loopback API is not a mobile endpoint.

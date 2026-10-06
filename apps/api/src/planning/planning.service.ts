@@ -1,7 +1,12 @@
+import { localDates, ExpectedInput } from './goals/model';
 import { PlatformFailure } from '../platform/failure';
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import { FinanceService, FinanceUnitOfWork } from '../finance/finance.service';
+import {
+  FinanceService,
+  FinanceUnitOfWork,
+  FinanceReadUnitOfWork,
+} from '../finance/finance.service';
 import { EncryptedRow, EncryptedRecord } from '../platform/encrypted-record';
 import { Currency, currency, minor, add } from '../finance/money';
 import { id, note, instant, object, page } from '../finance/validation';
@@ -498,5 +503,50 @@ export class PlanningService {
           'all-pending-through-horizon-full-amount-overdue-included-no-fx-no-probability',
       };
     });
+  }
+  async goalInputs(
+    u: FinanceReadUnitOfWork,
+    accountId: string,
+    c: Currency,
+    deadline: string,
+    timezone: string,
+  ): Promise<ExpectedInput[]> {
+    // A UTC superset includes every instant of the selected local deadline, including DST.
+    const end = new Date(Date.parse(deadline) + 2 * 86400000).toISOString();
+    const upper = end.length === 24 ? end : '9999-12-31T23:59:59.999Z';
+    const rows = (
+      await u.tx.query<ExpectedRow>(
+        "SELECT * FROM app.planning_expected WHERE user_id=$1 AND account_id=$2 AND state='pending' AND due_at<=$3 ORDER BY due_at,id LIMIT 1001",
+        [u.principal.userId, accountId, upper],
+      )
+    ).rows;
+    if (rows.length > 1000) throw new PlatformFailure('bounded_period');
+    const inputs: ExpectedInput[] = [];
+    const readDate = localDates(timezone);
+    for (const row of rows) {
+      const value = await this.records.open(
+        u.principal,
+        row,
+        'planning.expected',
+        row.id,
+        this.meta(row),
+        expected,
+        u.tx,
+      );
+      await this.authenticateAudit(u.tx, u.principal, row, value);
+      await this.finance.assertUnsettled(u, row.id);
+      if (row.currency !== c) throw new PlatformFailure('integrity');
+      const dueLocalDate = readDate(row.due_at);
+      if (dueLocalDate.length === 10 && dueLocalDate <= deadline)
+        inputs.push({
+          id: row.id,
+          revision: row.revision,
+          kind: value.kind,
+          dueAt: row.due_at,
+          dueLocalDate,
+          amountMinor: value.amountMinor,
+        });
+    }
+    return inputs;
   }
 }

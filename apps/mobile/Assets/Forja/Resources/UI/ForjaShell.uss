@@ -1,0 +1,35 @@
+.shell { flex-grow: 1; background-color: rgb(245, 242, 232); color: rgb(37, 49, 51); font-size: 17px; }
+.header { flex-direction: row; align-items: center; justify-content: space-between; padding-left: 20px; padding-right: 20px; padding-top: 12px; padding-bottom: 8px; flex-shrink: 0; }
+.brand { font-size: 28px; -unity-font-style: bold; color: rgb(35, 70, 66); }
+.heading { font-size: 21px; -unity-font-style: bold; white-space: normal; margin-bottom: 10px; }
+.hero-title { font-size: 28px; -unity-font-style: bold; white-space: normal; margin-top: 8px; margin-bottom: 8px; }
+.body { white-space: normal; margin-bottom: 12px; }
+.caption { font-size: 15px; color: rgb(78, 88, 85); white-space: normal; margin-top: 8px; }
+.eyebrow { font-size: 12px; -unity-font-style: bold; color: rgb(88, 100, 89); margin-bottom: 7px; white-space: normal; }
+.money { font-size: 24px; -unity-font-style: bold; white-space: normal; margin-bottom: 12px; }
+.status { font-size: 14px; color: rgb(48, 82, 76); white-space: normal; margin-bottom: 8px; }
+.content { flex-grow: 1; }
+.content .unity-scroll-view__content-container { padding-left: 20px; padding-right: 20px; padding-bottom: 16px; }
+.panel { background-color: rgb(255, 253, 247); border-color: rgb(213, 216, 202); border-width: 1px; border-radius: 18px; padding: 18px; margin-top: 12px; }
+.action { min-height: 48px; margin: 4px 0 4px 0; padding: 10px 14px; border-width: 0; border-radius: 12px; background-color: rgb(40, 78, 70); color: rgb(255, 253, 247); font-size: 17px; white-space: normal; }
+.action:disabled { background-color: rgb(216, 220, 210); color: rgb(76, 88, 84); }
+.quiet { min-height: 48px; padding: 8px 12px; background-color: rgb(232, 236, 223); border-width: 0; border-radius: 12px; color: rgb(35, 70, 66); font-size: 15px; white-space: normal; }
+.navigation { flex-direction: row; flex-shrink: 0; padding-top: 8px; padding-bottom: 8px; padding-left: 10px; padding-right: 10px; background-color: rgb(255, 253, 247); border-top-width: 1px; border-top-color: rgb(213, 216, 202); }
+.nav-item { flex-grow: 1; flex-basis: 0; min-height: 52px; border-width: 0; border-radius: 12px; margin-left: 2px; margin-right: 2px; padding: 6px 2px; background-color: rgba(0,0,0,0); font-size: 14px; color: rgb(60, 75, 69); white-space: normal; }
+.nav-item.selected { background-color: rgb(232, 236, 223); color: rgb(35, 70, 66); -unity-font-style: bold; }
+.world { height: 280px; margin-top: 10px; border-radius: 20px; overflow: hidden; background-color: rgb(232, 236, 223); }
+.world-image { position: absolute; top: 0; bottom: 0; left: 0; right: 0; }
+.character-image { position: absolute; top: 8px; bottom: 28px; left: 20%; right: 20%; }
+.world-caption { position: absolute; bottom: 0; left: 0; right: 0; padding: 10px; background-color: rgb(255, 253, 247); font-size: 14px; -unity-text-align: middle-center; white-space: normal; }
+.scrim { position: absolute; top: 0; bottom: 0; left: 0; right: 0; justify-content: flex-end; background-color: rgba(25, 43, 39, 0.58); padding: 20px; }
+.sheet { max-height: 85%; }
+
+.large-text .heading { font-size: 25px; }
+.large-text .hero-title { font-size: 32px; }
+.large-text .body { font-size: 20px; }
+.large-text .caption { font-size: 18px; }
+.large-text .money { font-size: 28px; }
+.large-text .action { font-size: 20px; }
+.large-text .quiet { font-size: 18px; }
+.large-text .nav-item { font-size: 16px; }
+.large-text .status { font-size: 17px; }

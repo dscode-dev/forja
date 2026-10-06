@@ -1,0 +1,13 @@
+# ADR 0016 — Native iOS session and memory-only shell
+
+Status: accepted within authorized PR-06 scope; physical runtime acceptance pending.
+
+Context: existing opaque-session/OIDC contracts need a native Unity consumer without client financial authority. Real provider enrollment and an iPhone-reachable trusted HTTPS endpoint are not yet established.
+
+Decision: one pure Application coordinator owns session/navigation data lifetime; Infrastructure provides bounded System.Net.Http transport, Unity's Newtonsoft package for explicit JSON parsing, iOS ASWebAuthenticationSession and Keychain bridges. Presentation uses runtime UI Toolkit for a small read-only shell with explicitly enabled built-in Input Manager; the imported unset input mode caused an actual Play Mode exception. This selects only the shell input backend, not the later game-controls design. Core owns validation and formatting, never financial calculations. OS browser/Keychain are used directly rather than a credential framework or embedded browser. Android fails closed until its separately verified adapter exists.
+
+The managed transport explicitly enforces the approved TLS 1.2 minimum; the installed Unity API lacks a TLS 1.3 enum member, so TLS 1.3 needs a verified transport change when supported. Certificate/hostname validation remains enabled. Request deadlines, cancellation, no-store checks, response-size/depth bounds, duplicate-field rejection and no automatic mutation retry apply at the transport. Only protected GETs may be repeated once after renewal. Session generations fence late responses; refresh renewal is serialized and the old refresh is removed before transmission, so even a process crash cannot replay an uncertain credential. Authentication-sheet focus changes preserve only the temporary PKCE context; ordinary background changes discard private views/access and require renewal/refetch on return.
+
+Consequences: no private disk cache, no offline writes, no invented backend request-ID convention. Configuration is public environment metadata and ships with no guessed endpoint/provider. Real HTTPS and provider enrollment gate integration acceptance; native build evidence does not imply device authentication or production readiness. Financial lists display only the explicit bounded page, never portfolio totals. Future release identity, Android storage/browser and art pipeline remain owned by later bounded work.
+
+Canonical implementation/workflow: [mobile](../mobile-development.md); security policy remains [security](../security.md#unitymobile-security-contract); evidence remains [PR-06](../prs/PR-06.md).

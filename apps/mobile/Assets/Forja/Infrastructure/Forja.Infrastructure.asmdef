@@ -3,7 +3,8 @@
   "rootNamespace": "Forja.Infrastructure",
   "references": [
     "Forja.Core",
-    "Forja.Application"
+    "Forja.Application",
+    "Unity.Newtonsoft.Json"
   ],
   "autoReferenced": true,
   "noEngineReferences": false

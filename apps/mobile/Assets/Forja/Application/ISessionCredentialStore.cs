@@ -4,7 +4,7 @@ using System.Threading.Tasks;
 
 namespace Forja.Application
 {
-    // Refresh credentials only; native secure-storage adapter belongs to PR-06.
+    // Only the rotating refresh credential; access and API payloads remain in memory.
     public interface ISessionCredentialStore
     {
         Task<string?> ReadAsync(CancellationToken cancellationToken);

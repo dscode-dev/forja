@@ -5,6 +5,8 @@
     "com.unity.modules.physicscore2d": "1.0.0",
     "com.unity.modules.tetgen": "1.0.0",
     "com.unity.modules.timelinefoundation": "1.0.0",
-    "com.unity.modules.unitywebrequest": "1.0.0"
+    "com.unity.modules.unitywebrequest": "1.0.0",
+    "com.unity.nuget.newtonsoft-json": "3.2.1",
+    "com.unity.modules.uielements": "1.0.0"
   }
 }

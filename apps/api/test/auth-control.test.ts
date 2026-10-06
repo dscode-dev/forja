@@ -89,12 +89,14 @@ test('opaque access/refresh sessions persist revocation, rotate once and revoke 
 test('expiry, identity tampering, denial and durable limits fail closed', (context) => {
   const f = fixture();
   try {
-    const now = Date.now(),
-      tokens = f.control.issue(f.user, f.binding, now);
-    context.mock.method(Date, 'now', () => now + 300001);
+    const now = Date.now();
+    let clock = now;
+    context.mock.method(Date, 'now', () => clock);
+    const tokens = f.control.issue(f.user, f.binding, now);
+    clock = now + 300000;
     assert.throws(() => f.control.resolve(tokens.accessToken));
     const rotated = f.control.refresh(tokens.refreshToken);
-    context.mock.method(Date, 'now', () => now + 7 * 86400000 + 300002);
+    clock = now + 7 * 86400000 + 300000;
     assert.throws(() => f.control.refresh(rotated.refreshToken));
     context.mock.restoreAll();
     assert.throws(() => f.control.assertIdentity(f.user, '2'.repeat(64)));

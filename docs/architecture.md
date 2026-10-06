@@ -41,6 +41,10 @@ Presentation invokes Application; Application uses local Domain and infrastructu
 
 Backend contracts define persisted state and provenance. Local previews must be labeled and cannot become authoritative on synchronization. Offline financial writes are not approved; any later offline design requires conflict, retry and security decisions. Persisted progression follows the [game authority contract](domains/game.md); animation and transient feedback can be local.
 
+PR-07 presentation uses the [2D art pipeline](art-direction.md#pr-07-presentation-pipeline) and [ADR 0017](adr/0017-2d-atelier-and-memory-only-presentation.md); no new backend module or financial authority.
+
+The implemented native iOS composition, configuration and transport belong to the [mobile workflow](mobile-development.md#runtime-ownership-and-configuration); [PR-06](prs/PR-06.md) owns executed acceptance.
+
 ## Deferred implementation choices
 
 Tool/version and development persistence choices are canonical in [development](development.md), established by PR-01 after PR-00.SEC approval. [Persistence](persistence.md) owns transaction/crypto adapter conventions; [Identity](identity.md) owns authentication/session behavior; [wire contracts](contracts/identity.md) own versioned mobile identity transport. Hosting, real OIDC provider enrollment, future domain API schemas, event delivery, asset pipeline and CI providers require scoped decisions. No technology selection here implies a cryptographic choice.
