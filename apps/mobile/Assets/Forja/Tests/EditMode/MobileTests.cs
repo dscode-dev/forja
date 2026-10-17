@@ -163,6 +163,9 @@ namespace Forja.Tests
         {public string Callback;public Task<string> Authorize(string a,string s,CancellationToken c)=>Task.FromResult(Callback);public void Cancel(){}}
         private sealed class Api : IBackendApi
         {
+            public Task AssignMission(string a, MissionCandidate m, string k, CancellationToken c) => throw new NotSupportedException();
+            public Task EvaluateMission(string a, string id, bool cancel, CancellationToken c) => throw new NotSupportedException();
+
             public Action DuringRefresh;public int RefreshCount,ReadCount;public Failure? RefreshFailure;public bool RevokeFailure;public string Challenge,Verifier;public TaskCompletionSource<ShellSnapshot> DelayedRead;public TaskCompletionSource<Tokens> DelayedRefresh;
             public Task Ready(CancellationToken c)=>Task.CompletedTask;
             public Task<AuthChallenge> Begin(string a,string i,CancellationToken c){Challenge=a;return Task.FromResult(new AuthChallenge{Id=Guid.NewGuid().ToString(),State=new string('s',43),Nonce=new string('q',43),AuthorizationUrl="https://identity.example.test/auth?client_id=native&redirect_uri="+Uri.EscapeDataString(Settings().Redirect)+"&state="+new string('s',43)+"&nonce="+new string('q',43)+"&code_challenge="+a+"&code_challenge_method=S256&response_type=code",ExpiresIn=300});}

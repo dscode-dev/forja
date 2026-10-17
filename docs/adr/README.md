@@ -36,3 +36,5 @@ PR-00.SEC decisions resolve the security questions deferred by ADR 0001; PR-00 s
 - [0016: native iOS session and memory-only shell](0016-native-ios-session-and-memory-only-shell.md) — Accepted within PR-06; integration/device gates remain open.
 
 - [0017 — 2D atelier and memory-only RPG presentation](0017-2d-atelier-and-memory-only-presentation.md).
+
+- [0018 — Deterministic missions and encrypted XP](0018-deterministic-missions-and-encrypted-xp.md).

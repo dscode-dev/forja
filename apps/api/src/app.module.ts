@@ -1,3 +1,4 @@
+import { GameModule } from './game/game.module';
 import { WorkModule } from './work/work.module';
 import { FinanceModule } from './finance/finance.module';
 import { PlanningModule } from './planning/planning.module';
@@ -7,6 +8,7 @@ import { PlatformModule } from './platform/platform.module';
 import { IdentityModule } from './identity/identity.module';
 @Module({
   imports: [
+    GameModule,
     WorkModule,
     FinanceModule,
     PlanningModule,

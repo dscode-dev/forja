@@ -55,6 +55,7 @@ namespace Forja.Core
         public readonly List<GoalView> Goals = new List<GoalView>();
         public string AccountNext, GoalNext;
         public ForecastView Forecast;
+        public GameView Game;
     }
     public sealed class AccountView
     {
@@ -71,7 +72,20 @@ namespace Forja.Core
     public sealed class GoalView
     {
         public string Id, Title, State, Target, Credited, Remaining;
+        public int Revision;
     }
+    public sealed class GameView
+    {
+        public long Xp, Level, NextLevelXp, XpToNextLevel;
+        public readonly List<MissionView> Active = new List<MissionView>();
+        public readonly List<MissionView> History = new List<MissionView>();
+        public readonly List<MissionCandidate> Candidates = new List<MissionCandidate>();
+        public string ActiveNext, HistoryNext;
+    }
+    public sealed class MissionCandidate
+    { public string Template, GoalId; public int? GoalRevision; }
+    public sealed class MissionView
+    { public string Id, Title, Description, State, ExpiresAt, RecordedAt, Reconciliation, Current, Target; public int RewardXp; public bool Financial; }
     public enum FinancialMeaning { Settled, Projected, Receivable, Payable, GoalFunding, WorkCapacity }
     public static class FinancialLabels
     {

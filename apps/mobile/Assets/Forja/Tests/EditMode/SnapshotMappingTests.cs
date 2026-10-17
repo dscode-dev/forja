@@ -59,6 +59,9 @@ namespace Forja.Tests
                 else if (path == "/v1/work/profile") { status=404; body="{}"; }
                 else if (path == "/v1/planning/goals") body="{\"next\":null,\"goals\":[{\"id\":\""+Goal+"\",\"revision\":1,\"status\":\"ACTIVE\",\"goal\":{\"currency\":\"BRL\",\"title\":\"test goal\",\"targetMinor\":\"10000\"}}]}";
                 else if (path == "/v1/planning/goals/"+Goal+"/progress") body="{\"goalId\":\""+Goal+"\",\"goalRevision\":1,\"currency\":\"BRL\",\"creditedMinor\":\"1200\",\"remainingMinor\":\"8800\"}";
+                else if (path == "/v1/game/progression") body = "{\"curveVersion\":1,\"xp\":0,\"level\":1,\"nextLevelXp\":100,\"xpToNextLevel\":100}";
+                else if (path == "/v1/game/missions") body = "{\"missions\":[],\"next\":null}";
+                else if (path == "/v1/game/candidates") body = "{\"candidates\":[]}";
                 else throw new InvalidOperationException("Unexpected fixture route.");
                 var response = new HttpResponseMessage((HttpStatusCode)status) { Content = new StringContent(body) };
                 response.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");

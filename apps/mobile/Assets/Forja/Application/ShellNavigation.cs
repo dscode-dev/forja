@@ -2,7 +2,7 @@ using Forja.Core;
 
 namespace Forja.Application
 {
-    public enum ShellDestination { Home, Goals, Reports, Profile, Accounts, Work }
+    public enum ShellDestination { Home, Goals, Reports, Profile, Accounts, Work, Missions }
     public sealed class ShellNavigation
     {
         public ShellDestination Destination { get; private set; }

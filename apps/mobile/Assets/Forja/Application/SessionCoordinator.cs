@@ -111,6 +111,20 @@ namespace Forja.Application
             Check(epoch); Snapshot = result; Set(SessionState.AUTHENTICATED);
         }
         public Task Reload() => Run(Load);
+        public Task AssignMission(MissionCandidate candidate) => Run(async () =>
+        {
+            int epoch = generation;
+            await Renew(); Check(epoch);
+            await api.AssignMission(access, candidate, Guid.NewGuid().ToString("D"), lifetime.Token);
+            Check(epoch); await Load();
+        });
+        public Task EvaluateMission(string id, bool cancel = false) => Run(async () =>
+        {
+            int epoch = generation;
+            await Renew(); Check(epoch);
+            await api.EvaluateMission(access, id, cancel, lifetime.Token);
+            Check(epoch); await Load();
+        });
         public Task Logout(bool all = false) => Run(async () =>
         {
             string token = access;

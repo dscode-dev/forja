@@ -168,10 +168,66 @@ namespace Forja.Infrastructure
                 string state = Text(goal, "status");
                 string stateLabel = state == "ACTIVE" ? "Ativa" : state == "PAUSED" ? "Pausada" : state == "COMPLETED" ? "Concluída" : state == "CANCELLED" ? "Cancelada" : null;
                 if (stateLabel == null) throw new MobileFailure(Failure.Protocol);
-                snapshot.Goals.Add(new GoalView { Id = id, Title = Text(config, "title"), State = stateLabel, Target = Amount(config, "targetMinor", currency), Credited = Amount(progress, "creditedMinor", currency), Remaining = Amount(progress, "remainingMinor", currency) });
+                snapshot.Goals.Add(new GoalView { Id = id, Title = Text(config, "title"), Revision = Integer(goal, "revision"), State = stateLabel, Target = Amount(config, "targetMinor", currency), Credited = Amount(progress, "creditedMinor", currency), Remaining = Amount(progress, "remainingMinor", currency) });
             }
             snapshot.GoalNext = goals["next"]?.Type == JTokenType.Null ? null : Id(goals, "next");
+            snapshot.Game = await ReadGame(access, snapshot.Goals.Count == 0 ? null : snapshot.Goals[0].Id, cancellation);
             return snapshot;
+        }
+        private static long LongInteger(JToken value, string key)
+        { var token = value?[key]; if (token?.Type != JTokenType.Integer || (long)token < 0 || (long)token > 9007199254740891L) throw new MobileFailure(Failure.Protocol); return (long)token; }
+        private static MissionView Mission(JToken item)
+        {
+            string state = Text(item, "state");
+            if (Integer(item, "definitionVersion") != 1 || (state != "ACTIVE" && state != "COMPLETED" && state != "EXPIRED" && state != "CANCELLED")) throw new MobileFailure(Failure.Protocol);
+            string rewardState = Text(item, "rewardState");
+            if (rewardState != (state == "COMPLETED" ? "AWARDED" : "NOT_AWARDED")) throw new MobileFailure(Failure.Protocol);
+            var progress = item["progress"]; string kind = Text(progress, "kind");
+            string current, target;
+            if (kind == "confirmed-profile") { current = Integer(progress, "current") == 1 ? "Perfil confirmado" : "Perfil ainda não confirmado"; target = "Confirmar perfil profissional"; }
+            else if (kind == "settled-goal")
+            {
+                string currency = Text(progress, "currency");
+                current = progress["currentMinor"]?.Type == JTokenType.Null ? null : Amount(progress, "currentMinor", currency);
+                target = Amount(progress, "targetMinor", currency);
+            }
+            else throw new MobileFailure(Failure.Protocol);
+            string reconciliation = Text(item, "reconciliation"); if (reconciliation != "UNCHANGED" && reconciliation != "CHANGED") throw new MobileFailure(Failure.Protocol);
+            return new MissionView { Id = Id(item, "id"), Title = Text(item, "title"), Description = Text(item, "description"), State = state, RewardXp = Integer(item, "rewardXp"), ExpiresAt = Text(item, "expiresAt"), RecordedAt = Text(item, "recordedAt"), Reconciliation = reconciliation, Current = current, Target = target, Financial = kind == "settled-goal" };
+        }
+        private async Task<GameView> ReadGame(string access, string goalId, CancellationToken cancellation)
+        {
+            var summary = await Send("v1/game/progression", access, null, cancellation);
+            if (Integer(summary, "curveVersion") != 1) throw new MobileFailure(Failure.Protocol);
+            var game = new GameView { Xp = LongInteger(summary, "xp"), Level = LongInteger(summary, "level"), NextLevelXp = LongInteger(summary, "nextLevelXp"), XpToNextLevel = LongInteger(summary, "xpToNextLevel") };
+            foreach (string view in new[] { "active", "history" })
+            {
+                var page = await Send("v1/game/missions?limit=20&view=" + view, access, null, cancellation);
+                var destination = view == "active" ? game.Active : game.History;
+                foreach (var item in Array(page, "missions")) destination.Add(Mission(item));
+                string next = page["next"]?.Type == JTokenType.Null ? null : Id(page, "next");
+                if (view == "active") game.ActiveNext = next; else game.HistoryNext = next;
+            }
+            var candidates = await Send("v1/game/candidates" + (goalId == null ? "" : "?goalId=" + goalId), access, null, cancellation);
+            foreach (var candidate in Array(candidates, "candidates"))
+            {
+                string template = Text(candidate, "template");
+                if (template != "WORK_PROFILE" && template != "GOAL_TARGET" && template != "RESERVE_TARGET") throw new MobileFailure(Failure.Protocol);
+                string target = candidate["goalId"]?.Type == JTokenType.Null ? null : Id(candidate, "goalId");
+                int? revision = candidate["goalRevision"]?.Type == JTokenType.Null ? (int?)null : Integer(candidate, "goalRevision");
+                if (template == "WORK_PROFILE" ? target != null || revision != null : target == null || revision == null || revision <= 0 || target != goalId) throw new MobileFailure(Failure.Protocol);
+                game.Candidates.Add(new MissionCandidate { Template = template, GoalId = target, GoalRevision = revision });
+            }
+            return game;
+        }
+        public async Task AssignMission(string access, MissionCandidate candidate, string key, CancellationToken cancellation)
+        {
+            await Send("v1/game/missions", access, new JObject { ["idempotencyKey"] = key, ["template"] = candidate.Template, ["goalId"] = candidate.GoalId == null ? JValue.CreateNull() : new JValue(candidate.GoalId), ["goalRevision"] = candidate.GoalRevision.HasValue ? new JValue(candidate.GoalRevision.Value) : JValue.CreateNull() }, cancellation);
+        }
+        public async Task EvaluateMission(string access, string id, bool cancel, CancellationToken cancellation)
+        {
+            if (!Guid.TryParseExact(id, "D", out _)) throw new MobileFailure(Failure.Protocol);
+            await Send("v1/game/missions/" + id + (cancel ? "/cancel" : "/evaluate"), access, new JObject(), cancellation);
         }
         public void Dispose() => client.Dispose();
     }

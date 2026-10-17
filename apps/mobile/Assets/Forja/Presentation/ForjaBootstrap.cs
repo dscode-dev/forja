@@ -30,7 +30,9 @@ namespace Forja.Presentation
             root.style.unityFontDefinition = FontDefinition.FromFont(Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf"));
             shell = new ForjaShell(root, navigation, intent => Observe(session.Login(intent)),
                 () => Observe(session.State == SessionState.AUTHENTICATED ? session.Reload() : session.Start()),
-                all => Observe(session.Logout(all)));
+                all => Observe(session.Logout(all)),
+                candidate => Observe(session.AssignMission(candidate)),
+                (id, cancel) => Observe(session.EvaluateMission(id, cancel)));
             root.RegisterCallback<GeometryChangedEvent>(_ => ApplySafeArea());
             try
             {

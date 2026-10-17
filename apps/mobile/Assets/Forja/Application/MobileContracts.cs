@@ -12,6 +12,8 @@ namespace Forja.Application
         Task<Tokens> Refresh(string refresh, CancellationToken cancellation);
         Task Revoke(string access, bool all, CancellationToken cancellation);
         Task<ShellSnapshot> Read(string access, CancellationToken cancellation);
+        Task AssignMission(string access, MissionCandidate candidate, string key, CancellationToken cancellation);
+        Task EvaluateMission(string access, string id, bool cancel, CancellationToken cancellation);
     }
     public interface IAuthorizationBrowser
     {

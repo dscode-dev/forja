@@ -1,6 +1,6 @@
 # Development foundation
 
-Canonical development tooling/workflow. Persistence contracts: [persistence](persistence.md). Runtime/module rules stay in [architecture](architecture.md), sensitive handling in [security](security.md), mobile handoff in [mobile development](mobile-development.md). Identity/authentication and encrypted minimal profiles are implemented; no financial/game/AI schema exists. Production gates remain explicit.
+Canonical development tooling/workflow. Persistence contracts: [persistence](persistence.md). Runtime/module rules stay in [architecture](architecture.md), sensitive handling in [security](security.md), mobile handoff in [mobile development](mobile-development.md). Identity, Finance, Work, Planning and Game persistence are implemented in their scoped PRs; AI remains deferred. Production gates remain explicit.
 
 ## Repository ownership
 
@@ -31,7 +31,7 @@ scripts/dev crypto-open  # Keychain -> private runtime delivery; first use grant
 scripts/dev install      # locked dependencies in Node container
 scripts/dev crypto-bootstrap # explicit independent control schema initialization/migrations
 scripts/dev up           # healthy isolated PostgreSQL
-scripts/dev migrate      # explicit migration role; wrapped-key platform schema only
+scripts/dev migrate      # explicit migration role; additive owned-module schemas
 scripts/dev run          # build/watch API on http://127.0.0.1:3010
 scripts/dev check        # build, lint, format-check, types, unit tests, static mobile structure
 scripts/dev integration  # real PostgreSQL/HTTP/migration tests in forja_test

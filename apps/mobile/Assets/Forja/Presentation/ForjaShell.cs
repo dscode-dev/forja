@@ -16,11 +16,13 @@ namespace Forja.Presentation
         private readonly Action refresh;
         private readonly Action<bool> logout;
         private readonly PresentationArt art;
+        private readonly Action<MissionCandidate> assignMission;
+        private readonly Action<string, bool> evaluateMission;
         private SessionCoordinator session;
         private bool configurationError;
-        public ForjaShell(VisualElement root, ShellNavigation navigation, Action<string> login, Action refresh, Action<bool> logout)
+        public ForjaShell(VisualElement root, ShellNavigation navigation, Action<string> login, Action refresh, Action<bool> logout, Action<MissionCandidate> assignMission = null, Action<string, bool> evaluateMission = null)
         {
-            this.root = root; this.navigation = navigation; this.login = login; this.refresh = refresh; this.logout = logout;
+            this.root = root; this.navigation = navigation; this.login = login; this.refresh = refresh; this.logout = logout; this.assignMission = assignMission; this.evaluateMission = evaluateMission;
             art = Resources.Load<PresentationArt>("UI/PresentationArt");
             root.AddToClassList("shell"); root.styleSheets.Add(Resources.Load<StyleSheet>("UI/ForjaShell"));
         }
@@ -78,6 +80,7 @@ namespace Forja.Presentation
                 case ShellDestination.Reports:
                     scroll.Add(ShellComponents.State("Crônicas do seu caminho", "Os relatórios ainda não estão disponíveis. Eles serão construídos a partir do seu histórico financeiro real.")); break;
                 case ShellDestination.Profile: Profile(scroll); break;
+                case ShellDestination.Missions: Journey(scroll, snapshot); break;
             }
             Nav();
         }
@@ -94,6 +97,7 @@ namespace Forja.Presentation
         {
             parent.Add(ShellComponents.Text(snapshot.Name == null ? "Seu espaço, seu caminho" : "Olá, " + snapshot.Name, "hero-title"));
             parent.Add(new CharacterPresentation(art, navigation.CharacterId, navigation.ReducedMotion));
+            if (snapshot.Game != null) parent.Add(ShellComponents.Status("Jornada · nível " + snapshot.Game.Level + " · " + snapshot.Game.Xp + " XP virtual"));
             if (navigation.CharacterId == null) parent.Add(ShellComponents.Action("Escolher minha presença", () => Go(ShellDestination.Profile), true, "quiet"));
             var finances = ShellComponents.Panel("Onde você está hoje", "VIDA FINANCEIRA");
             if (snapshot.Accounts.Count == 0) finances.Add(ShellComponents.Text("Você ainda não tem contas cadastradas."));
@@ -111,7 +115,7 @@ namespace Forja.Presentation
             var work = ShellComponents.Panel("Seu tempo, suas possibilidades", "TRABALHO");
             work.Add(ShellComponents.Text(snapshot.Work == null ? "Você ainda não tem perfil profissional cadastrado." : snapshot.Work.Occupation));
             work.Add(ShellComponents.Action("Ver capacidade declarada", () => Go(ShellDestination.Work), true, "quiet")); parent.Add(work);
-            parent.Add(ShellComponents.Action("Minha jornada", () => ShowSheet("Sua jornada", "Missões e progressão ainda não estão disponíveis. A experiência virtual nunca altera seu dinheiro real."), true, "quiet"));
+            parent.Add(ShellComponents.Action("Minha jornada", () => Go(ShellDestination.Missions), true, "quiet"));
         }
         private void Accounts(VisualElement parent, ShellSnapshot snapshot)
         {
@@ -156,6 +160,54 @@ namespace Forja.Presentation
             else ShellComponents.Value(panel, FinancialLabels.Title(FinancialMeaning.WorkCapacity), work.Estimate, navigation.HiddenValues);
             panel.Add(ShellComponents.Text("Não representa renda recebida. Base: seu perfil profissional declarado.")); parent.Add(panel);
         }
+        private void Journey(VisualElement parent, ShellSnapshot snapshot)
+        {
+            Back(parent, "Minha jornada");
+            var game = snapshot.Game;
+            if (game == null) { parent.Add(ShellComponents.State("Jornada indisponível", "Não foi possível consultar suas missões com segurança.")); return; }
+            var progression = ShellComponents.Panel("Nível " + game.Level, "PROGRESSÃO VIRTUAL");
+            progression.Add(ShellComponents.Text(game.Xp + " XP · faltam " + game.XpToNextLevel + " XP para o próximo nível."));
+            progression.Add(ShellComponents.Text("XP não tem valor monetário e nunca altera seu dinheiro.", "caption")); parent.Add(progression);
+            if (game.Active.Count == 0) parent.Add(ShellComponents.State("No seu ritmo", "Nenhuma missão ativa nesta página. Escolha um objetivo elegível abaixo, quando disponível."));
+            foreach (var mission in game.Active) MissionCard(parent, mission);
+            PageNotice(parent, game.ActiveNext, 20);
+            if (game.Candidates.Count > 0)
+            {
+                var candidates = ShellComponents.Panel("Um próximo passo", "MISSÕES ELEGÍVEIS");
+                candidates.Add(ShellComponents.Text("As opções financeiras, quando disponíveis, usam a primeira meta consultada. Você escolhe se ela representa sua reserva.", "caption"));
+                foreach (var candidate in game.Candidates)
+                {
+                    var selected = candidate;
+                    string title = candidate.Template == "WORK_PROFILE" ? "Confirmar perfil profissional" : candidate.Template == "RESERVE_TARGET" ? "Escolher missão de reserva" : "Escolher missão de meta";
+                    candidates.Add(ShellComponents.Action(title, () => assignMission?.Invoke(selected), assignMission != null));
+                }
+                parent.Add(candidates);
+            }
+            if (game.History.Count > 0) parent.Add(ShellComponents.Text("Passos registrados", "heading"));
+            foreach (var mission in game.History) MissionCard(parent, mission);
+            PageNotice(parent, game.HistoryNext, 20);
+        }
+        private void MissionCard(VisualElement parent, MissionView mission)
+        {
+            var panel = ShellComponents.Panel(mission.Title); panel.Add(ShellComponents.Text(mission.Description));
+            string status = mission.State == "ACTIVE" ? "Ativa" : mission.State == "COMPLETED" ? "Concluída · XP creditado uma vez" : mission.State == "EXPIRED" ? "Prazo encerrado · sem penalidade" : "Cancelada · sem penalidade";
+            panel.Add(ShellComponents.Status(status));
+            panel.Add(ShellComponents.Text((mission.State == "COMPLETED" ? "Prêmio creditado: " : "Prêmio previsto, não creditado: ") + mission.RewardXp + " XP virtual", "caption"));
+            if (mission.Financial) ShellComponents.Value(panel, "Objetivo", mission.Target, navigation.HiddenValues);
+            else panel.Add(ShellComponents.Text(mission.Target));
+            if (mission.Current == null) panel.Add(ShellComponents.Status("Progresso atual indisponível para a base original"));
+            else if (mission.Financial) ShellComponents.Value(panel, "Progresso registrado pelo servidor", mission.Current, navigation.HiddenValues);
+            else panel.Add(ShellComponents.Status(mission.Current));
+            panel.Add(ShellComponents.Text("Registro UTC: " + mission.RecordedAt + "\nPrazo UTC: " + mission.ExpiresAt, "caption"));
+            if (mission.Reconciliation == "CHANGED") panel.Add(ShellComponents.Status("A base mudou desde a conclusão. Seu XP histórico foi preservado."));
+            if (mission.State == "ACTIVE")
+            {
+                panel.Add(ShellComponents.Action("Conferir progresso", () => evaluateMission?.Invoke(mission.Id, false), evaluateMission != null));
+                panel.Add(ShellComponents.Action("Cancelar missão", () => ShowSheet("Cancelar missão", "A missão será encerrada sem alterar seu dinheiro ou XP.", () => evaluateMission?.Invoke(mission.Id, true)), evaluateMission != null, "quiet"));
+            }
+            else if (mission.State == "COMPLETED") panel.Add(ShellComponents.Action("Conferir base atual", () => evaluateMission?.Invoke(mission.Id, false), evaluateMission != null, "quiet"));
+            parent.Add(panel);
+        }
         private void Profile(VisualElement parent)
         {
             parent.Add(ShellComponents.Text("Meu espaço", "hero-title"));
@@ -197,8 +249,8 @@ namespace Forja.Presentation
         }
         private void Back(VisualElement parent, string title)
         { parent.Add(ShellComponents.Action("Voltar ao início", () => Go(ShellDestination.Home), true, "quiet")); parent.Add(ShellComponents.Text(title, "hero-title")); }
-        private static void PageNotice(VisualElement parent, string next)
-        { if (next != null) parent.Add(ShellComponents.Text("Exibindo a primeira página (até 100 itens). Há mais registros no servidor.", "caption")); }
+        private static void PageNotice(VisualElement parent, string next, int limit = 100)
+        { if (next != null) parent.Add(ShellComponents.Text("Exibindo a primeira página (até " + limit + " itens). Há mais registros no servidor.", "caption")); }
         private void Nav()
         {
             var bar = new VisualElement(); bar.AddToClassList("navigation");
@@ -207,7 +259,7 @@ namespace Forja.Presentation
             for (int i = 0; i < destinations.Length; i++)
             {
                 var target = destinations[i]; var button = ShellComponents.Action(titles[i], () => Go(target), true, "nav-item");
-                if (navigation.Destination == target || (target == ShellDestination.Home && (navigation.Destination == ShellDestination.Work || navigation.Destination == ShellDestination.Accounts))) button.AddToClassList("selected");
+                if (navigation.Destination == target || (target == ShellDestination.Home && (navigation.Destination == ShellDestination.Work || navigation.Destination == ShellDestination.Accounts || navigation.Destination == ShellDestination.Missions))) button.AddToClassList("selected");
                 bar.Add(button);
             }
             root.Add(bar);

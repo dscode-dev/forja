@@ -48,3 +48,5 @@ The implemented native iOS composition, configuration and transport belong to th
 ## Deferred implementation choices
 
 Tool/version and development persistence choices are canonical in [development](development.md), established by PR-01 after PR-00.SEC approval. [Persistence](persistence.md) owns transaction/crypto adapter conventions; [Identity](identity.md) owns authentication/session behavior; [wire contracts](contracts/identity.md) own versioned mobile identity transport. Hosting, real OIDC provider enrollment, future domain API schemas, event delivery, asset pipeline and CI providers require scoped decisions. No technology selection here implies a cryptographic choice.
+
+PR-08 implements the [Game module/application contract](contracts/game.md), [deterministic rules](domains/game.md#mission-rule-1) and [ADR 0018](adr/0018-deterministic-missions-and-encrypted-xp.md). Game depends on owner read contracts only; its explicit evaluation creates no financial write or background service.

@@ -172,6 +172,13 @@ export class WorkService {
       ...capacity(snapshot.profile, horizon),
     };
   }
+  // Caller holds the common active-owner transaction guard. No nested transaction/profile copy.
+  async missionFacts(tx: Transaction, p: SessionPrincipal) {
+    const revision = await this.head(tx, p);
+    if (!revision) return { revision: 0 };
+    await this.read(tx, p, revision);
+    return { revision };
+  }
   async careerContext(p: SessionPrincipal) {
     const { revision, profile: value } = await this.profile(p);
     return {

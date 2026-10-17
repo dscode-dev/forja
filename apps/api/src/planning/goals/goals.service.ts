@@ -827,6 +827,29 @@ export class GoalsService {
     );
     return this.getCalculation(p, target, result.calculationId);
   }
+  // Consumer supplies Finance's already owner-guarded read unit; all reads remain module-owned.
+  async missionFacts(u: FinanceReadUnitOfWork, target: string) {
+    const current = await this.load(u.tx, u.principal, id(target));
+    const account = await this.finance.requireAccount(
+      u,
+      current.goal.fundingAccountId,
+    );
+    return {
+      status: current.status,
+      accountState: account.row.state,
+      revision: current.revision,
+      accountId: account.row.id,
+      accountRevision: account.row.revision,
+      financeCursor: u.seq,
+      currency: current.goal.currency,
+      targetMinor: current.goal.targetMinor,
+      creditedMinor: progress(
+        current.goal.targetMinor,
+        account.value.balanceMinor,
+        current.status !== 'CANCELLED',
+      ).creditedMinor,
+    };
+  }
   async advisoryFacts(
     p: SessionPrincipal,
     target: string,
