@@ -155,10 +155,44 @@ namespace Forja.Tests
                 Assert.That(session.AiAnalysis, Is.Null); Assert.That(session.Chronicle, Is.Null); Assert.That(session.AiBusy, Is.False);
             }
         }
+        [Test] public async Task StrategistIsExplicitMaskedAndNeverAutoAcceptsOrCompletesMission()
+        {
+            var api = new Api();
+            using (var session = new SessionCoordinator(api, new Store(), new Browser(), Settings()))
+            {
+                await session.Start(); session.SelectStrategy(new StrategyIntent()); await session.RefreshStrategy(); await session.RequestStrategy(); Assert.That(api.StrategyCalls, Is.Zero);
+                await session.ConsentAi(true); Assert.That(api.StrategyCalls, Is.Zero); await session.RequestStrategy(); Assert.That(api.StrategyCalls, Is.EqualTo(1)); Assert.That(api.StrategyDecisions, Is.Zero);
+                var root = new VisualElement(); var navigation = new ShellNavigation(); navigation.Go(ShellDestination.Strategy); var shell = new ForjaShell(root, navigation, _ => {}, () => {}, _ => {});
+                shell.Render(session, false); Assert.That(Text(root), Does.Not.Contain("Private strategy test text")); Assert.That(Text(root), Does.Not.Contain("Test-only mission"));
+                navigation.ToggleValues(); shell.Render(session, false); Assert.That(Text(root), Does.Contain("Private strategy test text")); Assert.That(Text(root), Does.Contain("Test-only mission"));
+                shell.Render(session, false); Assert.That(api.StrategyCalls, Is.EqualTo(1));
+                await session.DecideStrategy(true); await session.DecideStrategy(true); Assert.That(api.StrategyDecisions, Is.EqualTo(1)); Assert.That(session.Snapshot.Game.Xp, Is.EqualTo(20));
+                api.StrategyOffline = true; await session.RequestStrategy(); Assert.That(session.AiError, Is.EqualTo(Failure.Offline)); Assert.That(session.Snapshot, Is.Not.Null);
+                session.Background(); Assert.That(session.Strategy, Is.Null); Assert.That(session.AiPreferences, Is.Null);
+            }
+        }
+        [Test] public async Task StrategistLateResponseCannotRestoreAnotherFocusOrBackgroundState()
+        {
+            var api = new Api { AiEnabled = true, PendingStrategy = new TaskCompletionSource<StrategyView>() };
+            using (var session = new SessionCoordinator(api, new Store(), new Browser(), Settings()))
+            {
+                await session.Start(); await session.RefreshStrategy(); var pending = session.RequestStrategy();
+                Assert.That(session.AiBusy, Is.True); Assert.That(session.Busy, Is.False); await session.RequestStrategy(); Assert.That(api.StrategyCalls, Is.EqualTo(1));
+                session.SelectStrategy(new StrategyIntent { GoalId = "test-other-goal", Focus = "GOAL" });
+                api.PendingStrategy.SetResult(new StrategyView { State = "SUCCEEDED", Summary = "Late private strategy" }); await pending; Assert.That(session.Strategy, Is.Null);
+                session.Background(); Assert.That(session.StrategyIntent.GoalId, Is.Null);
+            }
+        }
         private static MobileSettings Settings() => new MobileSettings("development", "https://api.example.test", "", "", "com.darlan.forja.dev:/auth/callback");
         private static string Text(VisualElement root) => string.Join(" ", root.Query<Label>().ToList().Select(x => x.text));
         private sealed class Api : IBackendApi
         {
+            public int StrategyCalls, StrategyDecisions; public bool StrategyOffline;
+            public TaskCompletionSource<StrategyView> PendingStrategy;
+            public Task<StrategyView> ReadStrategy(string a, StrategyIntent intent, CancellationToken c) => Task.FromResult(new StrategyView { State = AiEnabled ? "ABSENT" : "DISABLED" });
+            public Task<StrategyView> RequestStrategy(string a, StrategyIntent intent, string key, string retry, CancellationToken c) { StrategyCalls++; if (StrategyOffline) throw new MobileFailure(Failure.Offline); return PendingStrategy?.Task ?? Task.FromResult(new StrategyView { State = "SUCCEEDED", ExecutionId = "test-strategy", Summary = "Private strategy test text", Focus = "Test focus", ProposalTitle = "Test-only mission", ProposalRationale = "Test-only reason", RewardXp = 50 }); }
+            public Task DecideStrategy(string a, string id, bool accept, CancellationToken c) { StrategyDecisions++; return Task.CompletedTask; }
+
             public bool AiEnabled, AiOffline; public int AiCalls;
             public TaskCompletionSource<AiAnalysis> PendingAi;
             public Task<AiPreferences> ReadAiPreferences(string a, CancellationToken c) => Task.FromResult(new AiPreferences { Enabled = AiEnabled, ProviderAvailable = true, Revision = 1, PolicyVersion = "forja.ai.v1", Disclosure = "Test-only disclosure" });

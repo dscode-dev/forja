@@ -17,7 +17,7 @@ Read this file, the canonical document for the affected domain, and the current 
 - PR order, gates and unresolved decisions: [roadmap](docs/roadmap.md).
 - Decision process: [ADRs](docs/adr/README.md).
 
-Current work: [PR-09.A](docs/prs/PR-09.A.md); persistence/crypto implementation: [persistence](docs/persistence.md); commands/version ownership: [development](docs/development.md). Next scope follows the [roadmap](docs/roadmap.md). Local acceptance does not imply production verification.
+Current work: [PR-09.B](docs/prs/PR-09.B.md); persistence/crypto implementation: [persistence](docs/persistence.md); commands/version ownership: [development](docs/development.md). Next scope follows the [roadmap](docs/roadmap.md). Local acceptance does not imply production verification.
 
 Before implementing any later PR, write its bounded specification: outcome, canonical references, prerequisites, owned changes, exclusions, acceptance evidence and unresolved decisions. Do not infer authorization from a roadmap entry.
 

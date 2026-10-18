@@ -136,6 +136,52 @@ namespace Forja.Infrastructure
         public async Task<AiAnalysis> ReadAlquimista(string access, string reportId, CancellationToken cancellation) => Analysis(await Send("v1/ai/alquimista/" + reportId, access, null, cancellation, report: true), reportId);
         public async Task<AiAnalysis> RequestAlquimista(string access, string reportId, string key, string retryOf, CancellationToken cancellation) => Analysis(await Send("v1/ai/alquimista/" + reportId, access,
             new JObject { ["requestKey"] = key, ["retryOf"] = retryOf == null ? JValue.CreateNull() : new JValue(retryOf) }, cancellation, report: true), reportId);
+        private static JObject StrategyIntentBody(StrategyIntent intent) => new JObject { ["goalId"] = intent.GoalId == null ? JValue.CreateNull() : new JValue(intent.GoalId), ["focus"] = intent.Focus };
+        private static StrategyView Strategy(JObject value)
+        {
+            string state = Text(value, "state");
+            if (System.Array.IndexOf(new[] { "DISABLED", "UNAVAILABLE", "ABSENT", "NO_ACTION", "INSUFFICIENT_CONTEXT", "THROTTLED", "RUNNING", "SUCCEEDED", "FAILED", "CANCELLED", "EXPIRED", "STALE" }, state) < 0 || value["cached"]?.Type != JTokenType.Boolean) throw new MobileFailure(Failure.Protocol);
+            var result = new StrategyView { State = state, Cached = (bool)value["cached"], ExecutionId = value["executionId"]?.Type == JTokenType.Null ? null : Id(value, "executionId") };
+            if (value["decision"]?.Type != JTokenType.Null)
+            {
+                result.Decision = Text(value["decision"], "action");
+                if (result.Decision != "ACCEPTED" && result.Decision != "DISMISSED") throw new MobileFailure(Failure.Protocol);
+                result.MissionId = result.Decision == "ACCEPTED" ? Id(value["decision"], "missionId") : null;
+            }
+            var n = value["narrative"];
+            if (state == "SUCCEEDED")
+            {
+                if (Integer(n, "schema") != 1 || Text(n, "kind") != "AI_STRATEGY" || Text(n, "method") != "MODEL_SELECTED_REVIEWED_TEXT") throw new MobileFailure(Failure.Protocol);
+                result.Summary = Inert(n["summary"], "text"); result.Focus = Inert(n["focus"], "text");
+                foreach (var line in Array(n, "limitations")) result.Limitations.Add(Inert(new JObject { ["text"] = line }, "text"));
+            }
+            else if (n?.Type != JTokenType.Null) throw new MobileFailure(Failure.Protocol);
+            var proposal = value["proposal"];
+            if (proposal?.Type != JTokenType.Null)
+            {
+                if (state != "SUCCEEDED" || result.Decision != null || Integer(proposal, "version") != 1 || System.Array.IndexOf(new[] { "WORK_PROFILE", "GOAL_TARGET", "RESERVE_TARGET" }, Text(proposal, "template")) < 0) throw new MobileFailure(Failure.Protocol);
+                result.ProposalTitle = Text(proposal, "title"); result.ProposalRationale = Inert(proposal["rationale"], "text"); result.RewardXp = Integer(proposal, "rewardXp");
+            }
+            var e = value["evidence"];
+            if (e?.Type != JTokenType.Null)
+            {
+                if (e["expenseBaseline"]?.Type != JTokenType.Null || e["coverageDays"]?.Type != JTokenType.Null || e["idealReserveTarget"]?.Type != JTokenType.Null) throw new MobileFailure(Failure.Protocol);
+                if (e["currency"]?.Type == JTokenType.String)
+                {
+                    string currency = Text(e, "currency");
+                    foreach (var pair in new[] { new[] { "settledMinor", "Recursos realizados da conta escolhida" }, new[] { "accountMovementMinor", "Movimento realizado da conta · sete dias UTC completos" }, new[] { "goalRemainingMinor", "Valor a alcançar da meta" }, new[] { "pendingOutgoingMinor", "Saídas pendentes · ainda não pagas" }, new[] { "pendingIncomingMinor", "Entradas previstas · ainda não recebidas" } })
+                        result.Evidence.Add(new ChronicleLine { Label = pair[1], Value = e[pair[0]] == null || e[pair[0]]?.Type == JTokenType.Null ? "Não disponível" : MoneyDisplay.Format(Text(e, pair[0]), currency, MoneyDisplay.Digits(currency)) });
+                }
+            }
+            return result;
+        }
+        public async Task<StrategyView> ReadStrategy(string access, StrategyIntent intent, CancellationToken cancellation) => Strategy(await Send("v1/ai/estrategista?focus=" + Uri.EscapeDataString(intent.Focus) + "&goalId=" + Uri.EscapeDataString(intent.GoalId ?? ""), access, null, cancellation));
+        public async Task<StrategyView> RequestStrategy(string access, StrategyIntent intent, string key, string retryOf, CancellationToken cancellation) => Strategy(await Send("v1/ai/estrategista", access, new JObject { ["intent"] = StrategyIntentBody(intent), ["requestKey"] = key, ["retryOf"] = retryOf == null ? JValue.CreateNull() : new JValue(retryOf) }, cancellation));
+        public async Task DecideStrategy(string access, string executionId, bool accept, CancellationToken cancellation)
+        {
+            var value = await Send("v1/ai/estrategista/" + executionId + (accept ? "/accept" : "/dismiss"), access, new JObject(), cancellation);
+            if (accept) Id(value, "id"); else if (Text(value, "action") != "DISMISSED") throw new MobileFailure(Failure.Protocol);
+        }
         public async Task Ready(CancellationToken cancellation)
         { var result = await Send("health/ready", null, null, cancellation); if (Text(result, "status") != "ok") throw new MobileFailure(Failure.Unavailable); }
         public async Task<AuthChallenge> Begin(string challenge, string intent, CancellationToken cancellation)

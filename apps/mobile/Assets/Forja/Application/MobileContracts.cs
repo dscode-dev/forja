@@ -10,6 +10,9 @@ namespace Forja.Application
         Task<AiPreferences> SetAiPreferences(string access, AiPreferences previous, bool enabled, CancellationToken cancellation);
         Task<AiAnalysis> ReadAlquimista(string access, string reportId, CancellationToken cancellation);
         Task<AiAnalysis> RequestAlquimista(string access, string reportId, string key, string retryOf, CancellationToken cancellation);
+        Task<StrategyView> ReadStrategy(string access, StrategyIntent intent, CancellationToken cancellation);
+        Task<StrategyView> RequestStrategy(string access, StrategyIntent intent, string key, string retryOf, CancellationToken cancellation);
+        Task DecideStrategy(string access, string executionId, bool accept, CancellationToken cancellation);
         Task Ready(CancellationToken cancellation);
         Task<AuthChallenge> Begin(string challenge, string intent, CancellationToken cancellation);
         Task<Tokens> Complete(AuthChallenge challenge, string verifier, string code, CancellationToken cancellation);

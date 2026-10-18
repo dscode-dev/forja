@@ -163,6 +163,12 @@ namespace Forja.Tests
         {public string Callback;public Task<string> Authorize(string a,string s,CancellationToken c)=>Task.FromResult(Callback);public void Cancel(){}}
         private sealed class Api : IBackendApi
         {
+            public int StrategyCalls, StrategyDecisions; public bool StrategyOffline;
+            public TaskCompletionSource<StrategyView> PendingStrategy;
+            public Task<StrategyView> ReadStrategy(string a, StrategyIntent intent, CancellationToken c) => Task.FromResult(new StrategyView { State = AiEnabled ? "ABSENT" : "DISABLED" });
+            public Task<StrategyView> RequestStrategy(string a, StrategyIntent intent, string key, string retry, CancellationToken c) { StrategyCalls++; if (StrategyOffline) throw new MobileFailure(Failure.Offline); return PendingStrategy?.Task ?? Task.FromResult(new StrategyView { State = "SUCCEEDED", ExecutionId = "test-strategy", Summary = "Private strategy test text", Focus = "Test focus", ProposalTitle = "Test-only mission", ProposalRationale = "Test-only reason", RewardXp = 50 }); }
+            public Task DecideStrategy(string a, string id, bool accept, CancellationToken c) { StrategyDecisions++; return Task.CompletedTask; }
+
             public bool AiEnabled, AiOffline; public int AiCalls;
             public TaskCompletionSource<AiAnalysis> PendingAi;
             public Task<AiPreferences> ReadAiPreferences(string a, CancellationToken c) => Task.FromResult(new AiPreferences { Enabled = AiEnabled, ProviderAvailable = true, Revision = 1, PolicyVersion = "forja.ai.v1", Disclosure = "Test-only disclosure" });

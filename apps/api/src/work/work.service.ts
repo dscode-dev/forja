@@ -179,6 +179,18 @@ export class WorkService {
     await this.read(tx, p, revision);
     return { revision };
   }
+  // Purpose-bound read inside the existing shared owner guard; no free profile text.
+  async strategyFacts(tx: Transaction, p: SessionPrincipal, horizon: Horizon) {
+    const revision = await this.head(tx, p);
+    if (!revision) return { revision, currency: null, totalMinor: null };
+    const value = await this.read(tx, p, revision),
+      result = capacity(value.profile, horizon);
+    return {
+      revision,
+      currency: value.profile.currency,
+      totalMinor: result.totalMinor,
+    };
+  }
   async careerContext(p: SessionPrincipal) {
     const { revision, profile: value } = await this.profile(p);
     return {

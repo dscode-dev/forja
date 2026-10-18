@@ -349,17 +349,24 @@ export class FinanceService {
   async snapshot<T>(
     p: SessionPrincipal,
     operation: (u: FinanceReadUnitOfWork) => Promise<T>,
+    transaction?: Transaction,
+    allowEmpty = false,
   ): Promise<T> {
     await this.identity.assertOwner(p, p.userId);
-    return this.db.transaction(async (tx) => {
+    const run = async (tx: Transaction) => {
       await this.owner(tx, p);
       await tx.query('SELECT id FROM app.users WHERE id=$1 FOR NO KEY UPDATE', [
         p.userId,
       ]);
       const head = await this.lockedStream(tx, p);
-      if (!head) throw new PlatformFailure('not_found');
-      return operation({ tx, principal: p, ...head });
-    });
+      if (!head && !allowEmpty) throw new PlatformFailure('not_found');
+      return operation({
+        tx,
+        principal: p,
+        ...(head ?? { seq: 0, chain: emptyChain }),
+      });
+    };
+    return transaction ? run(transaction) : this.db.transaction(run);
   }
   async assertUnsettled(
     u: FinanceReadUnitOfWork,

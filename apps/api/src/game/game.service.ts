@@ -125,11 +125,16 @@ export class GameService {
     const active = await this.crypto.lifecycle.active(p.userId);
     return this.crypto.keys.withKey(active, p.binding, 'encrypt', (scope) =>
       financial
-        ? this.finance.snapshot(p, async (u) => {
-            scope.guard(u.tx);
-            await this.integrity(u.tx, p);
-            return fn(u.tx, scope, u);
-          })
+        ? this.finance.snapshot(
+            p,
+            async (u) => {
+              scope.guard(u.tx);
+              await this.integrity(u.tx, p);
+              return fn(u.tx, scope, u);
+            },
+            undefined,
+            true,
+          )
         : this.crypto.keys.transaction(scope, async (tx) => {
             await this.owner(tx, p);
             await this.integrity(tx, p);
@@ -458,6 +463,39 @@ export class GameService {
     const v = await this.candidates(p, goalId);
     return v.candidates.find((c) => c.template === t) ?? null;
   }
+  proposalDefinition(t: Template) {
+    const d = definitions[template(t)];
+    return {
+      template: t,
+      version: 1,
+      title: d.title,
+      description: d.description,
+      rewardXp: d.xp,
+    };
+  }
+  // AI consumes authenticated source availability only; never a command/tool for the model.
+  async strategyFacts(u: FinanceReadUnitOfWork, goalId: string | null) {
+    await this.integrity(u.tx, u.principal);
+    const rows = (
+      await u.tx.query<Head>(
+        'SELECT * FROM app.game_missions WHERE user_id=$1 AND (source_id=$1::uuid OR source_id=$2::uuid) ORDER BY id',
+        [u.principal.userId, goalId],
+      )
+    ).rows;
+    const missions = [];
+    for (const r of rows) {
+      const m = await this.load(u.tx, u.principal, r.id);
+      missions.push({
+        id: r.id,
+        sourceId: r.source_id,
+        revision: r.revision,
+        template: m.value.template,
+        state: m.value.state,
+      });
+    }
+    const xp = await this.xp(u.tx, u.principal);
+    return { missions, awardSequence: xp.seq };
+  }
   private async append(
     tx: Transaction,
     scope: KeyScope,
@@ -516,6 +554,14 @@ export class GameService {
     rawTemplate: unknown,
     goalId: string | null,
     goalRevision: number | null,
+    adoption?: {
+      validate: (u: FinanceReadUnitOfWork) => Promise<void>;
+      record: (
+        tx: Transaction,
+        scope: KeyScope,
+        missionId: string,
+      ) => Promise<void>;
+    },
   ) {
     idempotency(key);
     const t = template(rawTemplate),
@@ -527,7 +573,8 @@ export class GameService {
       throw new PlatformFailure('invalid');
     const source = goalId ?? p.userId,
       fingerprint = hash(['game-assignment', 1, t, goalId, goalRevision]);
-    return this.command(p, financial, async (tx, scope, u) => {
+    return this.command(p, financial || !!adoption, async (tx, scope, u) => {
+      if (adoption) await adoption.validate(u!);
       const existing = (
         await tx.query<Head>(
           'SELECT * FROM app.game_missions WHERE user_id=$1 AND (id=$2 OR source_id=$3) ORDER BY (id=$2) DESC',
@@ -541,6 +588,7 @@ export class GameService {
           (existing.id === key && m.value.fingerprint !== fingerprint)
         )
           throw new PlatformFailure('conflict');
+        if (adoption) await adoption.record(tx, scope, m.row.id);
         return this.dto(m);
       }
       const f = await this.facts(tx, p, t, source, u);
@@ -570,7 +618,9 @@ export class GameService {
         dek_version: scope.identity.version,
         payload: '',
       };
-      return this.dto(await this.append(tx, scope, row, value));
+      const assigned = await this.append(tx, scope, row, value);
+      if (adoption) await adoption.record(tx, scope, assigned.row.id);
+      return this.dto(assigned);
     });
   }
   async evaluate(p: SessionPrincipal, target: string, cancel = false) {

@@ -42,3 +42,5 @@ PR-00.SEC decisions resolve the security questions deferred by ADR 0001; PR-00 s
 - [0019 — Bounded deterministic reports and immutable Chronicles](0019-immutable-bounded-chronicles.md).
 
 - [0020 — Grounded Alquimista and gated stateless provider](0020-grounded-alquimista-and-provider-gate.md).
+
+- [0021 — Grounded strategy and atomic Game adoption](0021-strategist-proposals-and-atomic-adoption.md).

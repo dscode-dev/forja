@@ -79,6 +79,34 @@ namespace Forja.Tests
                 Assert.That(report.Context.Find(x => x.Label.Contains("Horizonte próprio")).Value, Does.Contain("2027-01-01"));
             }
         }
+        [Test] public async Task StrategyWireSeparatesFactsProposalAndUserCommandWithoutInventedCoverage()
+        {
+            var handler = new StrategyHandler();
+            using (var api = new BackendApi(new ApiEndpoint("https://api.example.test"), handler))
+            {
+                var intent = new StrategyIntent { GoalId = "11111111-1111-4111-8111-111111111111", Focus = "RESERVE" };
+                var value = await api.ReadStrategy("test-access", intent, CancellationToken.None);
+                Assert.That(value.ProposalTitle, Is.EqualTo("Test-only reserve mission")); Assert.That(value.RewardXp, Is.EqualTo(50)); Assert.That(value.Evidence[0].Value, Is.EqualTo("BRL 0,00"));
+                Assert.That(handler.Posts, Is.Zero); await api.RequestStrategy("test-access", intent, "22222222-2222-4222-8222-222222222222", null, CancellationToken.None); Assert.That(handler.Posts, Is.EqualTo(1));
+                var body = BackendApi.Parse(handler.Command); Assert.That(body["intent"]["goalId"].ToString(), Is.EqualTo(intent.GoalId)); Assert.That(body.Property("xp"), Is.Null);
+                await api.DecideStrategy("test-access", value.ExecutionId, true, CancellationToken.None); Assert.That(handler.Command, Is.EqualTo("{}"));
+            }
+        }
+        private sealed class StrategyHandler : HttpMessageHandler
+        {
+            public int Posts; public string Command;
+            protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellation)
+            {
+                if (request.Method == HttpMethod.Post) { Posts++; Command = request.Content.ReadAsStringAsync().GetAwaiter().GetResult(); }
+                JToken Nil() => JValue.CreateNull();
+                var body = request.RequestUri.AbsolutePath.EndsWith("/accept", StringComparison.Ordinal) ? new JObject { ["id"] = "33333333-3333-4333-8333-333333333333" } : new JObject {
+                    ["state"] = "SUCCEEDED", ["cached"] = true, ["executionId"] = "22222222-2222-4222-8222-222222222222", ["decision"] = Nil(),
+                    ["narrative"] = new JObject { ["schema"] = 1, ["kind"] = "AI_STRATEGY", ["method"] = "MODEL_SELECTED_REVIEWED_TEXT", ["summary"] = new JObject { ["text"] = "Test-only source-grounded strategy" }, ["focus"] = new JObject { ["text"] = "Test-only focus" }, ["limitations"] = new JArray("Test-only unknown coverage") },
+                    ["proposal"] = new JObject { ["template"] = "RESERVE_TARGET", ["version"] = 1, ["title"] = "Test-only reserve mission", ["rewardXp"] = 50, ["rationale"] = new JObject { ["text"] = "Test-only rationale" } },
+                    ["evidence"] = new JObject { ["currency"] = "BRL", ["settledMinor"] = "0", ["goalRemainingMinor"] = "10000", ["pendingOutgoingMinor"] = "0", ["pendingIncomingMinor"] = "9000", ["expenseBaseline"] = Nil(), ["coverageDays"] = Nil(), ["idealReserveTarget"] = Nil() } };
+                var response = new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(body.ToString()) }; response.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json"); response.Headers.CacheControl = new CacheControlHeaderValue { NoStore = true }; return Task.FromResult(response);
+            }
+        }
         private sealed class Handler : HttpMessageHandler
         {
             public int SummaryStatus = 200, ReportStatus = 200;

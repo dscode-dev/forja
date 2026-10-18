@@ -212,4 +212,13 @@ namespace Forja.Core
         public readonly List<string> Questions = new List<string>();
         public readonly List<string> Limitations = new List<string>();
     }
+    public sealed class StrategyIntent
+    { public string GoalId, Focus = "GENERAL"; }
+    public sealed class StrategyView
+    {
+        public string State, ExecutionId, Summary, Focus, Decision, MissionId, ProposalTitle, ProposalRationale;
+        public int RewardXp; public bool Cached;
+        public readonly List<string> Limitations = new List<string>();
+        public readonly List<ChronicleLine> Evidence = new List<ChronicleLine>();
+    }
 }

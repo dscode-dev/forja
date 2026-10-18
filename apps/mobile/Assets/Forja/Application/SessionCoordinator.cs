@@ -22,12 +22,16 @@ namespace Forja.Application
         public ShellSnapshot Snapshot { get; private set; }
         public ChronicleView Chronicle { get; private set; }
         public Failure? ChronicleError { get; private set; }
+        public StrategyView Strategy { get; private set; }
+        public StrategyIntent StrategyIntent { get; private set; } = new StrategyIntent();
+        public void SelectStrategy(StrategyIntent intent)
+        { ClearAi(); StrategyIntent = new StrategyIntent { GoalId = intent.GoalId, Focus = intent.Focus }; Changed?.Invoke(); }
         public AiPreferences AiPreferences { get; private set; }
         public AiAnalysis AiAnalysis { get; private set; }
         public bool AiBusy { get; private set; }
         public Failure? AiError { get; private set; }
         private int aiGeneration;
-        private void ClearAi() { aiGeneration++; AiPreferences = null; AiAnalysis = null; AiError = null; AiBusy = false; }
+        private void ClearAi() { aiGeneration++; Strategy = null; AiPreferences = null; AiAnalysis = null; AiError = null; AiBusy = false; }
         public Failure? Error { get; private set; }
         public bool Busy => busy;
         public bool CanLogin => settings.OidcConfigured;
@@ -37,7 +41,7 @@ namespace Forja.Application
         private void Set(SessionState state, Failure? error = null)
         { State = state; Error = error; Changed?.Invoke(); }
         private void ResetMemory()
-        { generation++; ClearAi(); lifetime.Cancel(); lifetime.Dispose(); lifetime = new CancellationTokenSource(); access = null; Snapshot = null; Chronicle = null; ChronicleError = null; }
+        { generation++; ClearAi(); lifetime.Cancel(); lifetime.Dispose(); lifetime = new CancellationTokenSource(); access = null; Snapshot = null; Chronicle = null; ChronicleError = null; StrategyIntent = new StrategyIntent(); }
         private void Check(int epoch)
         { if (epoch != generation || disposed || suspended) throw new OperationCanceledException(); }
         public Task Start() => Run(async () =>
@@ -151,6 +155,7 @@ namespace Forja.Application
         // AI has an independent loading/failure surface; deterministic report remains visible.
         public async Task RefreshAi() => await RunAi(async (report, epoch) =>
         {
+            if (report == null) return;
             var preference = await api.ReadAiPreferences(access, lifetime.Token);
             if (epoch != aiGeneration) return;
             AiPreferences = preference;
@@ -162,19 +167,19 @@ namespace Forja.Application
             if (AiPreferences == null) throw new MobileFailure(Failure.Unavailable);
             var result = await api.SetAiPreferences(access, AiPreferences, enabled, lifetime.Token);
             if (epoch != aiGeneration) return;
-            AiPreferences = result; AiAnalysis = null; // Enabling never dispatches inference.
+            AiPreferences = result; AiAnalysis = null; Strategy = null; // Enabling never dispatches inference.
         });
         public Task Analyze(bool retry = false) => RunAi(async (report, epoch) =>
         {
-            if (AiPreferences?.Enabled != true || !AiPreferences.ProviderAvailable) return;
+            if (report == null || AiPreferences?.Enabled != true || !AiPreferences.ProviderAvailable) return;
             string retryOf = retry && AiAnalysis?.State == "FAILED" ? AiAnalysis.ExecutionId : null;
             var result = await api.RequestAlquimista(access, report, Guid.NewGuid().ToString("D"), retryOf, lifetime.Token);
             if (epoch == aiGeneration) AiAnalysis = result;
         });
         private async Task RunAi(Func<string, int, Task> action)
         {
-            if (disposed || suspended || busy || AiBusy || State != SessionState.AUTHENTICATED || Chronicle == null) return;
-            int epoch = generation, aiEpoch = aiGeneration; string report = Chronicle.Item.Id;
+            if (disposed || suspended || busy || AiBusy || State != SessionState.AUTHENTICATED) return;
+            int epoch = generation, aiEpoch = aiGeneration; string report = Chronicle?.Item.Id;
             AiBusy = true; AiError = null; Changed?.Invoke();
             try { await Renew(); Check(epoch); if (aiEpoch == aiGeneration) await action(report, aiEpoch); }
             catch (OperationCanceledException) { }
@@ -188,6 +193,24 @@ namespace Forja.Application
             catch { if (epoch == generation && aiEpoch == aiGeneration) AiError = Failure.Unavailable; }
             finally { if (epoch == generation && aiEpoch == aiGeneration) AiBusy = false; Changed?.Invoke(); }
         }
+        public Task RefreshStrategy() => RunAi(async (_, epoch) =>
+        {
+            var preferences = await api.ReadAiPreferences(access, lifetime.Token); if (epoch != aiGeneration) return; AiPreferences = preferences;
+            var value = await api.ReadStrategy(access, StrategyIntent, lifetime.Token); if (epoch == aiGeneration) Strategy = value;
+        });
+        public Task RequestStrategy(bool retry = false) => RunAi(async (_, epoch) =>
+        {
+            if (AiPreferences?.Enabled != true || !AiPreferences.ProviderAvailable) return;
+            var value = await api.RequestStrategy(access, StrategyIntent, Guid.NewGuid().ToString("D"), retry && Strategy?.State == "FAILED" ? Strategy.ExecutionId : null, lifetime.Token);
+            if (epoch == aiGeneration) Strategy = value;
+        });
+        public Task DecideStrategy(bool accept) => RunAi(async (_, epoch) =>
+        {
+            if (Strategy?.ExecutionId == null || (accept && Strategy.ProposalTitle == null) || Strategy.Decision != null || Strategy.State != "SUCCEEDED") return;
+            await api.DecideStrategy(access, Strategy.ExecutionId, accept, lifetime.Token); if (epoch != aiGeneration) return;
+            var snapshot = await api.Read(access, lifetime.Token); if (epoch != aiGeneration) return; Snapshot = snapshot;
+            var value = await api.ReadStrategy(access, StrategyIntent, lifetime.Token); if (epoch == aiGeneration) Strategy = value;
+        });
         public Task AssignMission(MissionCandidate candidate) => Run(async () =>
         {
             int epoch = generation;

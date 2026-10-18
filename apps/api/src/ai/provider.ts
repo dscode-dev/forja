@@ -9,6 +9,13 @@ import {
   instructions,
   outputSchema,
 } from './model';
+import {
+  StrategyContext,
+  strategyContext,
+  strategySchema,
+  strategyInstructions,
+} from './strategist-model';
+export type ProviderContext = Context | StrategyContext;
 export const AI_PROVIDER = Symbol('AI_PROVIDER');
 export const MODEL = 'gpt-5.4-mini-2026-03-17';
 export const ENDPOINT = 'https://api.openai.com/v1/responses';
@@ -21,7 +28,7 @@ export interface ProviderResult {
 }
 export interface AiProvider {
   available(): boolean;
-  run(c: Context, signal: AbortSignal): Promise<ProviderResult>;
+  run(c: ProviderContext, signal: AbortSignal): Promise<ProviderResult>;
 }
 export interface ProviderSettings {
   enabled: boolean;
@@ -113,8 +120,12 @@ export class OpenAiProvider implements AiProvider {
       return false;
     }
   }
-  async run(raw: Context, signal: AbortSignal): Promise<ProviderResult> {
-    const c = context(raw),
+  async run(
+    raw: ProviderContext,
+    signal: AbortSignal,
+  ): Promise<ProviderResult> {
+    const strategist = raw.role === 'ESTRATEGISTA';
+    const c = strategist ? strategyContext(raw) : context(raw),
       a = this.approval();
     let key: string;
     try {
@@ -150,7 +161,7 @@ export class OpenAiProvider implements AiProvider {
           tool_choice: 'none',
           reasoning: { effort: 'none' },
           max_output_tokens: 900,
-          instructions,
+          instructions: strategist ? strategyInstructions : instructions,
           input: [
             {
               role: 'user',
@@ -160,9 +171,11 @@ export class OpenAiProvider implements AiProvider {
           text: {
             format: {
               type: 'json_schema',
-              name: 'forja_alquimista_v1',
+              name: strategist
+                ? 'forja_estrategista_v1'
+                : 'forja_alquimista_v1',
               strict: true,
-              schema: outputSchema,
+              schema: strategist ? strategySchema : outputSchema,
             },
           },
         }),

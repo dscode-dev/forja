@@ -17,7 +17,13 @@ import { PlatformFailure } from '../platform/failure';
 import { id, idempotency } from '../finance/validation';
 import { integer } from '../work/model';
 import { object } from '../identity/validation';
-import { AI_PROVIDER, AiProvider, MODEL, ProviderResult } from './provider';
+import {
+  AI_PROVIDER,
+  AiProvider,
+  MODEL,
+  ProviderResult,
+  ProviderContext,
+} from './provider';
 import {
   POLICY,
   PROMPT_VERSION,
@@ -25,11 +31,19 @@ import {
   AiFailure,
   Failure,
   Output,
-  Context,
   minimize,
   output,
   render,
 } from './model';
+import {
+  STRATEGY_CONFIG,
+  StrategyOutput,
+  strategyOutput,
+  strategyRender,
+} from './strategist-model';
+import { StrategySource } from './strategy-source';
+type Agent = 'ALQUIMISTA' | 'ESTRATEGISTA';
+type AiOutput = Output | StrategyOutput;
 interface PreferenceRow extends EncryptedRow {
   enabled: boolean;
   policy: string;
@@ -59,7 +73,7 @@ interface Data {
   intentFingerprint: string;
   inputFingerprint: string;
   sourceFingerprint: string;
-  result: Output | null;
+  result: AiOutput | null;
   failure: Failure | null;
   usage: {
     inputTokens: number;
@@ -79,7 +93,8 @@ export type AiState =
   | 'ABSENT'
   | 'EXPIRED'
   | 'INSUFFICIENT_CONTEXT'
-  | 'THROTTLED';
+  | 'THROTTLED'
+  | 'STALE';
 export interface AiView {
   state: AiState;
   executionId: string | null;
@@ -88,7 +103,8 @@ export interface AiView {
   model: string;
   createdAt: string | null;
   failure: Failure | null;
-  narrative: ReturnType<typeof render> | null;
+  narrative:
+    ReturnType<typeof render> | ReturnType<typeof strategyRender> | null;
   cached: boolean;
 }
 const failures: Failure[] = [
@@ -113,6 +129,7 @@ export class AiService {
     private readonly crypto: CryptoPlatform,
     private readonly identity: IdentityService,
     private readonly reporting: ReportingService,
+    private readonly strategies: StrategySource,
     private readonly logger: SafeLogger,
     @Inject(AI_PROVIDER) private readonly provider: AiProvider,
     erasure: PrivacyErasure,
@@ -121,6 +138,8 @@ export class AiService {
       for (const table of [
         'ai_request_receipts',
         'ai_executions',
+        'ai_strategy_decisions',
+        'ai_strategy_subjects',
         'ai_preferences',
         'ai_preference_history',
       ])
@@ -202,6 +221,10 @@ export class AiService {
       'DELETE FROM app.ai_executions WHERE user_id=$1 AND id IN(SELECT id FROM app.ai_executions WHERE user_id=$1 AND expires_at<=to_char(clock_timestamp() AT TIME ZONE \'UTC\',\'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"\') ORDER BY expires_at LIMIT 100)',
       [owner],
     );
+    await tx.query(
+      'DELETE FROM app.ai_strategy_subjects WHERE user_id=$1 AND expires_at<=to_char(clock_timestamp() AT TIME ZONE \'UTC\',\'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"\')',
+      [owner],
+    );
   }
   private async read<T>(
     p: SessionPrincipal,
@@ -227,7 +250,7 @@ export class AiService {
       }),
     );
   }
-  private async preference(tx: Transaction, p: SessionPrincipal) {
+  async preference(tx: Transaction, p: SessionPrincipal) {
     const heads = (
       await tx.query<{ revision: number | null; latest: number | null }>(
         'SELECT (SELECT revision FROM app.ai_preferences WHERE user_id=$1) AS revision,(SELECT max(revision) FROM app.ai_preference_history WHERE user_id=$1) AS latest',
@@ -273,7 +296,7 @@ export class AiService {
       ...(await this.read(p, (tx) => this.preference(tx, p))),
       providerAvailable: this.provider.available(),
       disclosure:
-        'IA opcional. O Alquimista usa somente sinais minimizados do relatório, sem valores exatos, datas, nomes ou identificadores. Um modelo OpenAI seleciona e organiza observações com texto revisado. Pode haver limitações; os fatos e valores permanecem no relatório determinístico. Desativar impede novas análises, mas não desfaz dados já enviados.',
+        'IA opcional. Alquimista e Estrategista usam somente sinais minimizados do relatório ou foco escolhido, sem valores exatos, datas, nomes ou identificadores. Um modelo OpenAI seleciona e organiza observações e propostas opcionais de missões com texto revisado. Atribuir uma missão exige sua confirmação; regras e recompensas pertencem ao sistema. Pode haver limitações; os fatos e valores permanecem no relatório determinístico. Desativar impede novas análises, mas não desfaz dados já enviados.',
     };
   }
   async setPreferences(
@@ -399,7 +422,16 @@ export class AiService {
         const failure = b['failure'];
         if (failure !== null && !failures.includes(failure as Failure))
           throw new PlatformFailure('integrity');
-        const result = b['result'] === null ? null : output(b['result'], null);
+        const result =
+          b['result'] === null
+            ? null
+            : this.parseOutput(
+                b['result'],
+                null,
+                row.config_version === STRATEGY_CONFIG
+                  ? 'ESTRATEGISTA'
+                  : 'ALQUIMISTA',
+              );
         if (
           (row.state === 'SUCCEEDED') !== (result !== null) ||
           (row.state === 'RUNNING' && failure !== null) ||
@@ -450,7 +482,7 @@ export class AiService {
     scope: KeyScope,
     m: Loaded,
     state: 'SUCCEEDED' | 'FAILED' | 'CANCELLED',
-    result: Output | null,
+    result: AiOutput | null,
     failure: Failure | null,
     usage: Data['usage'],
     at: string,
@@ -497,7 +529,7 @@ export class AiService {
     reportId: string,
     m: Loaded | null = null,
     cached = false,
-    c: Context | null = null,
+    c: ProviderContext | null = null,
   ): AiView {
     return {
       state,
@@ -509,7 +541,9 @@ export class AiService {
       failure: m?.data.failure ?? null,
       narrative:
         state === 'SUCCEEDED' && m?.data.result && c
-          ? render(output(m.data.result, c))
+          ? c.role === 'ESTRATEGISTA'
+            ? strategyRender(strategyOutput(m.data.result, c))
+            : render(output(m.data.result, c))
           : null,
       cached,
     };
@@ -579,25 +613,52 @@ export class AiService {
       ],
     );
   }
-  private async prepared(p: SessionPrincipal, reportId: string) {
+  private parseOutput(
+    raw: unknown,
+    c: ProviderContext | null,
+    agent: Agent,
+  ): AiOutput {
+    return agent === 'ESTRATEGISTA'
+      ? strategyOutput(raw, c?.role === 'ESTRATEGISTA' ? c : null)
+      : output(raw, c?.role === 'ALQUIMISTA' ? c : null);
+  }
+  private reference(
+    tx: Transaction,
+    p: SessionPrincipal,
+    target: string,
+    agent: Agent,
+  ) {
+    return agent === 'ESTRATEGISTA'
+      ? this.strategies.reference(tx, p, target)
+      : this.reporting.aiReference(tx, p, target);
+  }
+  private async prepared(p: SessionPrincipal, reportId: string, agent: Agent) {
+    if (agent === 'ESTRATEGISTA') return this.strategies.prepared(p, reportId);
     const facts = await this.reporting.alchemistFacts(p, reportId),
       c = minimize(facts);
     return {
       context: c,
       inputFingerprint: hash(['alquimista-context', 1, c]),
       sourceFingerprint: hash(['alquimista-source', 1, facts]),
+      stale: false,
     };
   }
-  async get(p: SessionPrincipal, reportId: string): Promise<AiView> {
+  async get(
+    p: SessionPrincipal,
+    reportId: string,
+    agent: Agent = 'ALQUIMISTA',
+  ): Promise<AiView> {
     id(reportId);
     const pref = await this.read(p, async (tx) => {
-      await this.reporting.aiReference(tx, p, reportId);
+      await this.reference(tx, p, reportId, agent);
       return this.preference(tx, p);
     });
     if (!pref.enabled) return this.view('DISABLED', reportId);
-    const prepared = await this.prepared(p, reportId);
+    const prepared = await this.prepared(p, reportId, agent);
+
     return this.command(p, async (tx, scope) => {
-      await this.reporting.aiReference(tx, p, reportId);
+      await this.reference(tx, p, reportId, agent);
+
       const consent = await this.preference(tx, p);
       if (!consent.enabled) return this.view('DISABLED', reportId);
       const row = (
@@ -608,7 +669,7 @@ export class AiService {
             reportId,
             consent.revision,
             PROMPT_VERSION,
-            CONFIG_VERSION,
+            agent === 'ESTRATEGISTA' ? STRATEGY_CONFIG : CONFIG_VERSION,
           ],
         )
       ).rows[0];
@@ -627,6 +688,12 @@ export class AiService {
         await this.load(tx, p, row),
         await this.now(tx),
       );
+      if (
+        prepared.stale ||
+        (agent === 'ESTRATEGISTA' &&
+          (await this.strategies.prepared(p, reportId, tx)).stale)
+      )
+        return this.view('STALE', reportId, m, true);
       if (
         m.data.inputFingerprint !== prepared.inputFingerprint ||
         m.data.sourceFingerprint !== prepared.sourceFingerprint
@@ -648,15 +715,19 @@ export class AiService {
         ).rows[0],
     );
     if (!r) throw new PlatformFailure('not_found');
+    const agent: Agent =
+      r.config_version === STRATEGY_CONFIG ? 'ESTRATEGISTA' : 'ALQUIMISTA';
     try {
       const pref = await this.read(p, async (tx) => {
-        await this.reporting.aiReference(tx, p, r.report_id);
+        await this.reference(tx, p, r.report_id, agent);
         return this.preference(tx, p);
       });
       if (!pref.enabled) return this.view('DISABLED', r.report_id);
-      const prepared = await this.prepared(p, r.report_id);
+      const prepared = await this.prepared(p, r.report_id, agent);
+
       return await this.command(p, async (tx, scope) => {
-        await this.reporting.aiReference(tx, p, r.report_id);
+        await this.reference(tx, p, r.report_id, agent);
+
         const consent = await this.preference(tx, p);
         if (!consent.enabled) return this.view('DISABLED', r.report_id);
         const row = (
@@ -672,6 +743,12 @@ export class AiService {
           await this.load(tx, p, row),
           await this.now(tx),
         );
+        if (
+          prepared.stale ||
+          (agent === 'ESTRATEGISTA' &&
+            (await this.strategies.prepared(p, r.report_id, tx)).stale)
+        )
+          return this.view('STALE', r.report_id, m, true);
         if (row.consent_revision !== consent.revision)
           return this.view('CANCELLED', r.report_id, m);
         if (
@@ -686,6 +763,72 @@ export class AiService {
         return this.view('EXPIRED', r.report_id);
       throw e;
     }
+  }
+  // Read only authenticated proposal routing; final adoption must still call adoptable under Game's guard.
+  async strategyCommand(p: SessionPrincipal, target: string) {
+    return this.read(p, async (tx) => {
+      const row = (
+        await tx.query<ExecutionRow>(
+          'SELECT * FROM app.ai_executions WHERE user_id=$1 AND id=$2',
+          [p.userId, id(target)],
+        )
+      ).rows[0];
+      if (!row || row.config_version !== STRATEGY_CONFIG)
+        throw new PlatformFailure('not_found');
+      const m = await this.load(tx, p, row),
+        consent = await this.preference(tx, p);
+      if (
+        row.state !== 'SUCCEEDED' ||
+        row.expires_at <= (await this.now(tx)) ||
+        !consent.enabled ||
+        consent.revision !== row.consent_revision
+      )
+        throw new PlatformFailure('conflict');
+      const result = strategyOutput(m.data.result, null),
+        subject = await this.strategies.load(tx, p, row.report_id);
+      return {
+        proposal: result.proposal,
+        intent: subject.data.intent,
+        goalRevision: subject.data.references.goalRevision,
+      };
+    });
+  }
+  async adoptable(
+    tx: Transaction,
+    p: SessionPrincipal,
+    target: string,
+    requireProposal = true,
+  ) {
+    const consent = await this.preference(tx, p);
+    if (!consent.enabled) throw new PlatformFailure('conflict');
+    const row = (
+      await tx.query<ExecutionRow>(
+        'SELECT * FROM app.ai_executions WHERE user_id=$1 AND id=$2',
+        [p.userId, id(target)],
+      )
+    ).rows[0];
+    if (!row || row.config_version !== STRATEGY_CONFIG)
+      throw new PlatformFailure('not_found');
+    const m = await this.load(tx, p, row);
+    if (
+      row.state !== 'SUCCEEDED' ||
+      row.consent_revision !== consent.revision ||
+      row.expires_at <= (await this.now(tx))
+    )
+      throw new PlatformFailure('conflict');
+    const fresh = await this.strategies.prepared(p, row.report_id, tx);
+    if (
+      fresh.stale ||
+      fresh.sourceFingerprint !== m.data.sourceFingerprint ||
+      fresh.inputFingerprint !== m.data.inputFingerprint ||
+      !fresh.context
+    )
+      throw new PlatformFailure('conflict');
+    const result = strategyOutput(m.data.result, fresh.context);
+    if (requireProposal && !result.proposal)
+      throw new PlatformFailure('conflict');
+    const subject = await this.strategies.load(tx, p, row.report_id);
+    return { proposal: result.proposal, intent: subject.data.intent };
   }
   async remove(p: SessionPrincipal, target: string) {
     id(target);
@@ -711,21 +854,28 @@ export class AiService {
     reportId: string,
     key: string,
     retryOf: string | null,
+    agent: Agent = 'ALQUIMISTA',
   ): Promise<AiView> {
     id(reportId);
     idempotency(key);
     if (retryOf !== null) id(retryOf);
-    const fp = hash(['alquimista-intent', 1, reportId, retryOf]);
+    const fp = hash([
+      agent === 'ESTRATEGISTA' ? 'estrategista-intent' : 'alquimista-intent',
+      1,
+      reportId,
+      retryOf,
+    ]);
     const pref = await this.read(p, async (tx) => {
-      await this.reporting.aiReference(tx, p, reportId);
+      await this.reference(tx, p, reportId, agent);
       return this.preference(tx, p);
     });
     if (!pref.enabled) return this.view('DISABLED', reportId);
-    const prepared = await this.prepared(p, reportId);
+    const prepared = await this.prepared(p, reportId, agent);
+    if (prepared.stale) return this.view('STALE', reportId);
     const admission = await this.command(
       p,
       async (tx, scope): Promise<{ view: AiView; run: Loaded | null }> => {
-        const source = await this.reporting.aiReference(tx, p, reportId),
+        const source = await this.reference(tx, p, reportId, agent),
           consent = await this.preference(tx, p),
           at = await this.now(tx);
         if (!consent.enabled)
@@ -755,7 +905,7 @@ export class AiService {
               reportId,
               consent.revision,
               PROMPT_VERSION,
-              CONFIG_VERSION,
+              agent === 'ESTRATEGISTA' ? STRATEGY_CONFIG : CONFIG_VERSION,
             ],
           )
         ).rows[0];
@@ -831,7 +981,8 @@ export class AiService {
           report_generation: source.generation,
           consent_revision: consent.revision,
           prompt_version: PROMPT_VERSION,
-          config_version: CONFIG_VERSION,
+          config_version:
+            agent === 'ESTRATEGISTA' ? STRATEGY_CONFIG : CONFIG_VERSION,
           attempt: (existing?.row.attempt ?? 0) + 1,
           state: 'RUNNING',
           revision: 1,
@@ -868,7 +1019,7 @@ export class AiService {
             source.generation,
             consent.revision,
             PROMPT_VERSION,
-            CONFIG_VERSION,
+            agent === 'ESTRATEGISTA' ? STRATEGY_CONFIG : CONFIG_VERSION,
             r.attempt,
             r.state,
             at,
@@ -890,12 +1041,17 @@ export class AiService {
     const m = admission.run,
       controller = new AbortController();
     this.active.set(m.row.id, { owner: p.userId, controller });
-    let result: Output | null = null,
+    let result: AiOutput | null = null,
       failure: Failure | null = null,
       usage: Data['usage'] = null;
     try {
       const allowed = await this.read(p, async (tx) => {
-        await this.reporting.aiReference(tx, p, reportId);
+        await this.reference(tx, p, reportId, agent);
+        if (
+          agent === 'ESTRATEGISTA' &&
+          (await this.strategies.prepared(p, reportId, tx)).stale
+        )
+          throw new AiFailure('SOURCE_EXPIRED');
         const c = await this.preference(tx, p),
           r = (
             await tx.query<ExecutionRow>(
@@ -917,7 +1073,7 @@ export class AiService {
         prepared.context!,
         controller.signal,
       );
-      result = output(response.value, prepared.context!);
+      result = this.parseOutput(response.value, prepared.context!, agent);
       usage = {
         inputTokens: response.inputTokens,
         outputTokens: response.outputTokens,
@@ -959,7 +1115,7 @@ export class AiService {
         return this.view('CANCELLED', reportId, current);
       }
       try {
-        await this.reporting.aiReference(tx, p, reportId);
+        await this.reference(tx, p, reportId, agent);
       } catch (e) {
         if (e instanceof PlatformFailure && e.code === 'not_found') {
           current = await this.terminal(
@@ -975,6 +1131,22 @@ export class AiService {
           return this.view('FAILED', reportId, current);
         }
         throw e;
+      }
+      if (
+        agent === 'ESTRATEGISTA' &&
+        (await this.strategies.prepared(p, reportId, tx)).stale
+      ) {
+        await this.terminal(
+          tx,
+          scope,
+          current,
+          'CANCELLED',
+          null,
+          'SOURCE_EXPIRED',
+          null,
+          at,
+        );
+        return this.view('STALE', reportId);
       }
       if (current.row.deadline <= at) {
         failure = 'OUTCOME_UNKNOWN';

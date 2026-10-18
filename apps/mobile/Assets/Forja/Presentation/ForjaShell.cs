@@ -20,15 +20,17 @@ namespace Forja.Presentation
         private readonly Action<string, bool> evaluateMission;
         private readonly Action<ChronicleRequest> createChronicle;
         private readonly Action<string> openChronicle;
-        private readonly Action moreChronicles, refreshAi;
+        private readonly Action moreChronicles, refreshAi, refreshStrategy;
+        private readonly Action<StrategyIntent> selectStrategy;
+        private readonly Action<bool> requestStrategy, decideStrategy;
         private readonly Action<bool> consentAi, analyzeAi;
         private string reportAccountId, reportFrom, reportThrough, reportType = "DAILY";
         private SessionCoordinator session;
         private bool configurationError;
-        public ForjaShell(VisualElement root, ShellNavigation navigation, Action<string> login, Action refresh, Action<bool> logout, Action<MissionCandidate> assignMission = null, Action<string, bool> evaluateMission = null, Action<ChronicleRequest> createChronicle = null, Action<string> openChronicle = null, Action moreChronicles = null, Action refreshAi = null, Action<bool> consentAi = null, Action<bool> analyzeAi = null)
+        public ForjaShell(VisualElement root, ShellNavigation navigation, Action<string> login, Action refresh, Action<bool> logout, Action<MissionCandidate> assignMission = null, Action<string, bool> evaluateMission = null, Action<ChronicleRequest> createChronicle = null, Action<string> openChronicle = null, Action moreChronicles = null, Action refreshAi = null, Action<bool> consentAi = null, Action<bool> analyzeAi = null, Action<StrategyIntent> selectStrategy = null, Action refreshStrategy = null, Action<bool> requestStrategy = null, Action<bool> decideStrategy = null)
         {
             this.root = root; this.navigation = navigation; this.login = login; this.refresh = refresh; this.logout = logout; this.assignMission = assignMission; this.evaluateMission = evaluateMission;
-            this.createChronicle = createChronicle; this.openChronicle = openChronicle; this.moreChronicles = moreChronicles; this.refreshAi = refreshAi; this.consentAi = consentAi; this.analyzeAi = analyzeAi;
+            this.createChronicle = createChronicle; this.openChronicle = openChronicle; this.moreChronicles = moreChronicles; this.refreshAi = refreshAi; this.consentAi = consentAi; this.analyzeAi = analyzeAi; this.selectStrategy = selectStrategy; this.refreshStrategy = refreshStrategy; this.requestStrategy = requestStrategy; this.decideStrategy = decideStrategy;
             art = Resources.Load<PresentationArt>("UI/PresentationArt");
             root.AddToClassList("shell"); root.styleSheets.Add(Resources.Load<StyleSheet>("UI/ForjaShell"));
         }
@@ -88,6 +90,7 @@ namespace Forja.Presentation
                     Chronicles(scroll, snapshot); break;
                 case ShellDestination.Profile: Profile(scroll); break;
                 case ShellDestination.Missions: Journey(scroll, snapshot); break;
+                case ShellDestination.Strategy: Strategist(scroll, snapshot); break;
             }
             Nav();
         }
@@ -147,6 +150,54 @@ namespace Forja.Presentation
             Lines(parent, "Planejado · ainda não realizado", report.Planned);
             Lines(parent, "Contexto observado na geração · separado do dinheiro realizado", report.Context);
             Alquimista(parent);
+        }
+        private void Strategist(VisualElement parent, ShellSnapshot snapshot)
+        {
+            parent.Add(ShellComponents.Text("Estrategista", "hero-title"));
+            parent.Add(ShellComponents.Text("Apoio opcional à decisão · IA seleciona sugestões com texto revisado. Você confirma qualquer missão; Game determina a evidência e o XP.", "caption"));
+            var intent = session.StrategyIntent;
+            var choices = new System.Collections.Generic.List<string> { "Sem meta · visão geral" }; foreach (var goal in snapshot.Goals) choices.Add(choices.Count + ". " + goal.Title);
+            int chosen = snapshot.Goals.FindIndex(g => g.Id == intent.GoalId) + 1;
+            var selector = new DropdownField("Foco escolhido por você", choices, Math.Max(0, chosen));
+            selector.RegisterValueChangedCallback(e => { int index = choices.IndexOf(e.newValue); selectStrategy?.Invoke(new StrategyIntent { GoalId = index <= 0 ? null : snapshot.Goals[index - 1].Id, Focus = index <= 0 ? "GENERAL" : "GOAL" }); }); parent.Add(selector);
+            if (intent.GoalId != null)
+            {
+                var purpose = new DropdownField("Como considerar esta meta", new System.Collections.Generic.List<string> { "Meta financeira", "Minha reserva escolhida" }, intent.Focus == "RESERVE" ? 1 : 0);
+                purpose.RegisterValueChangedCallback(e => selectStrategy?.Invoke(new StrategyIntent { GoalId = intent.GoalId, Focus = e.newValue == "Minha reserva escolhida" ? "RESERVE" : "GOAL" })); parent.Add(purpose);
+            }
+            parent.Add(ShellComponents.Text("Não há base declarada de despesas recorrentes para calcular cobertura ou um alvo ideal de reserva. Esta consulta não classifica todas as suas metas.", "caption"));
+            if (session.AiError.HasValue) parent.Add(ShellComponents.State("Consulta não concluída", "Suas missões e finanças continuam disponíveis. Confira a estratégia antes de tentar novamente."));
+            if (session.AiBusy) { parent.Add(ShellComponents.Text("Consultando… Nenhuma missão é atribuída automaticamente.")); return; }
+            parent.Add(ShellComponents.Action("Consultar preferência e estratégia guardada", () => refreshStrategy?.Invoke(), refreshStrategy != null, "quiet"));
+            var preferences = session.AiPreferences;
+            if (preferences == null) return;
+            parent.Add(ShellComponents.Text(preferences.Enabled ? "IA habilitada por você." : "IA desativada. O sistema de missões continua disponível."));
+            parent.Add(ShellComponents.Action(preferences.Enabled ? "Desativar IA" : "Conhecer e habilitar IA", () => { if (preferences.Enabled) consentAi?.Invoke(false); else ShowSheet("Habilitar IA opcional", preferences.Disclosure, () => consentAi?.Invoke(true)); }, consentAi != null, "quiet"));
+            if (!preferences.Enabled) return;
+            var strategy = session.Strategy;
+            if (strategy != null && strategy.Evidence.Count > 0) Lines(parent, "Fatos determinísticos do foco escolhido · separado da sugestão", strategy.Evidence);
+            if (strategy?.Decision != null) parent.Add(ShellComponents.Text(strategy.Decision == "ACCEPTED" ? "Missão atribuída por Game. Confira seu progresso em Minha jornada; aceitar não concede XP." : "Sugestão dispensada por você."));
+            if (strategy?.State == "SUCCEEDED")
+            {
+                var panel = ShellComponents.Panel("Sugestão do Estrategista", "INTERPRETAÇÃO POR IA"); parent.Add(panel);
+                if (navigation.HiddenValues) { panel.Add(ShellComponents.Text("Sugestão protegida. Use Mostrar valores para revisar antes de decidir.")); return; }
+                panel.Add(ShellComponents.Text(strategy.Cached ? "Estratégia guardada para estas fontes." : "Estratégia recebida para estas fontes.", "caption"));
+                panel.Add(ShellComponents.Text(strategy.Summary)); panel.Add(ShellComponents.Text(strategy.Focus)); foreach (var line in strategy.Limitations) panel.Add(ShellComponents.Text(line, "caption"));
+                if (strategy.ProposalTitle != null && strategy.Decision == null)
+                {
+                    panel.Add(ShellComponents.Text(strategy.ProposalTitle)); panel.Add(ShellComponents.Text(strategy.ProposalRationale)); panel.Add(ShellComponents.Text("Recompensa definida por Game · " + strategy.RewardXp + " XP virtual somente após conclusão validada", "caption"));
+                    panel.Add(ShellComponents.Action("Revisar e aceitar missão", () => ShowSheet("Aceitar sugestão", "Game verificará as fontes e a elegibilidade novamente. Nenhum dinheiro será movimentado; aceitar não conclui a missão nem concede XP.", () => decideStrategy?.Invoke(true)), decideStrategy != null));
+
+                }
+                if (strategy.Decision == null) panel.Add(ShellComponents.Action("Dispensar estratégia", () => decideStrategy?.Invoke(false), decideStrategy != null, "quiet"));
+            }
+            else
+            {
+                string state = strategy?.State;
+                parent.Add(ShellComponents.Text(state == "STALE" ? "As fontes mudaram. Esta estratégia não pode atribuir uma nova missão." : state == "RUNNING" ? "Uma estratégia está em andamento. Consultar a guardada não inicia outra chamada." : state == "NO_ACTION" || state == "INSUFFICIENT_CONTEXT" ? "Não há contexto suficiente ou uma nova ação sustentada para sugerir." : state == "FAILED" ? "A estratégia não foi concluída. Você pode solicitar uma nova tentativa." : state == "THROTTLED" ? "Limite de análises atingido. Aguarde antes de tentar novamente." : "Nenhuma estratégia disponível neste foco."));
+            }
+            if (!preferences.ProviderAvailable) parent.Add(ShellComponents.Text("O serviço de IA ainda não está disponível neste ambiente."));
+            else if (strategy?.State != "RUNNING" && strategy?.State != "SUCCEEDED") parent.Add(ShellComponents.Action(strategy?.State == "FAILED" ? "Solicitar nova tentativa" : "Solicitar estratégia", () => requestStrategy?.Invoke(strategy?.State == "FAILED"), requestStrategy != null));
         }
         private void Alquimista(VisualElement parent)
         {
@@ -272,6 +323,7 @@ namespace Forja.Presentation
         }
         private void Journey(VisualElement parent, ShellSnapshot snapshot)
         {
+            parent.Add(ShellComponents.Action("Consultar o Estrategista", () => Go(ShellDestination.Strategy), true, "quiet"));
             Back(parent, "Minha jornada");
             var game = snapshot.Game;
             if (game == null) { parent.Add(ShellComponents.State("Jornada indisponível", "Não foi possível consultar suas missões com segurança.")); return; }

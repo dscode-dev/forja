@@ -26,7 +26,7 @@ Use the pinned Editor with `-batchmode -nographics -projectPath <isolated-projec
 
 ## MANUAL MOBILE VALIDATION REQUIRED
 
-Current PR-09.A: [Alquimista evidence](prs/PR-09.A.md); native execution and physical/private acceptance remain separate.
+Current PR-09.B: [Estrategista evidence](prs/PR-09.B.md); native execution and physical/private acceptance remain separate.
 
 Historical PR-08: [mission/progression evidence](prs/PR-08.md) governs the journey surface; no physical/private acceptance is inferred from native tests.
 
@@ -78,3 +78,9 @@ The [AI contract](contracts/ai.md) adds an optional panel below deterministic Cr
 SessionCoordinator owns a separate AI loading/error state: the report remains visible on AI timeout/offline/unavailable. Memory/epoch guards discard late responses after source change/background/logout; no AI data enters device storage. AI narrative is inert text, clearly labeled model interpretation/reviewed wording, and entirely hidden by the existing value mask because qualitative signals infer private financial state too. Shared scrolling/Safe Area/native privacy applies.
 
 Current manual acceptance: [PR-09.A](prs/PR-09.A.md), using the eight steps above. Verify disabled/unconfigured and preference/error states, separate authoritative values, loading without report loss, text/scroll/Safe Area, explicit retry, no extra invocation on reopen, three lifecycle cycles/switcher privacy and the existing quantitative baseline. Real success/cache/provider-failure checks require approved provider plus reachable HTTPS/OIDC and legitimate inputs; they remain BLOCKED while external calls are explicitly disabled. No synthetic financial data or AI narrative may populate the physical product to bypass these gates.
+
+## PR-09.B Estrategista
+
+A contextual surface from Minha jornada preserves the four bottom destinations. The user explicitly chooses GENERAL or a goal from the loaded page, and whether to consider that goal as reserve; savings type never selects reserve automatically. Safe GET consults common preference/current strategy; explicit request is the only inference POST. Source facts are a separate deterministic panel, commentary marked AI/reviewed wording, and Game supplies the mission/reward preview. Existing value masking hides financial inference and acceptance controls until the suggestion can be reviewed. Accept opens explicit confirmation; dismissal is separate. Repeat taps are gated locally and reconciled by server idempotency, never a local XP update.
+
+The shared transient AI coordinator keeps Game/Finance available on failure, clears commentary/selection on background/logout, and drops late responses after focus changes. No new secret/device persistence, bottom tab, fake response or financial input is introduced. [Contract](contracts/strategist.md) owns payloads. Manual acceptance follows the eight steps above: contextual entry/selection, disabled/unconfigured, independent loading/error, facts-versus-AI distinction, reviewed accept/dismiss, repeated taps/no duplicated mission or XP, mask/scroll/Safe Area, three lifecycle cycles/switcher privacy and measured performance. Success/adoption with real AI remains blocked by the existing provider/HTTPS/OIDC gates; fixtures cannot populate the physical product.

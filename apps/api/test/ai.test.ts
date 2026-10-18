@@ -1,3 +1,5 @@
+import { strategyMinimize, strategyOutput } from '../src/ai/strategist-model';
+import { strategyFacts, strategySelected } from './fixtures/strategist';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
@@ -232,6 +234,33 @@ test('provider deadline is bounded and never retried after remote outcome become
       p.run(minimize(facts())!, new AbortController().signal),
       (e: unknown) => e instanceof AiFailure && e.kind === 'TIMEOUT',
     );
+    assert.equal(calls, 1);
+  } finally {
+    rmSync(f.dir, { recursive: true, force: true });
+  }
+});
+
+test('existing real adapter selects static Estrategista schema/prompt without changing provider, key gate or network policy', async () => {
+  const f = fixture();
+  try {
+    const c = strategyMinimize(strategyFacts())!;
+    let calls = 0;
+    const transport = (async (_url, init) => {
+      calls++;
+      const body = JSON.parse(String(init?.body));
+      assert.equal(body.model, MODEL);
+      assert.equal(body.store, false);
+      assert.equal(body.tools.length, 0);
+      assert.equal(body.text.format.name, 'forja_estrategista_v1');
+      assert.ok(body.instructions.startsWith('Estrategista prompt v1.'));
+      assert.ok(!JSON.stringify(body.text.format.schema).includes('11111111'));
+      return response(strategySelected(c));
+    }) as typeof fetch;
+    const value = await new OpenAiProvider(f.config, transport).run(
+      c,
+      new AbortController().signal,
+    );
+    strategyOutput(value.value, c);
     assert.equal(calls, 1);
   } finally {
     rmSync(f.dir, { recursive: true, force: true });

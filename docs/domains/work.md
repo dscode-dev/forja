@@ -42,3 +42,5 @@ AAD/persistence mapping is owned by [persistence](../persistence.md). Current po
 Game consumes [missionFacts](../contracts/game.md) inside the caller’s existing common owner-guarded transaction; Work authenticates its current immutable profile and returns only the revision/existence fact. No career text, declared earnings, availability threshold or financial mutation is supplied to this initial mission rule.
 
 Reporting observes an immutable profile before Finance capture and invokes the existing pure capacity rule over frozen report civil labels. It labels this as a declared scenario, not historical earned income; [Reporting](reporting.md) owns that composition.
+
+Estrategista consumes strategyFacts inside the already held owner transaction: authenticated profile revision plus declared seven-UTC-day capacity/currency only. No nested profile transaction, raw occupation/skills/notes or model-owned income calculation; [AI](ai.md#estrategista-rule-1-pr-09b) owns minimization and historical required-income interpretation.
