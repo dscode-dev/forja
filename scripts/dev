@@ -7,6 +7,9 @@ case "${1:-help}" in
     python3 - <<'PY'
 from pathlib import Path
 import secrets, shutil, os, re
+ai = Path('.local/ai')
+ai.mkdir(parents=True, exist_ok=True, mode=0o700)
+ai.chmod(0o700)
 p = Path('.local/secrets')
 p.mkdir(parents=True, exist_ok=True, mode=0o700)
 p.chmod(0o700)

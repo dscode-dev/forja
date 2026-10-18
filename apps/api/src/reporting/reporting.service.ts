@@ -512,6 +512,36 @@ export class ReportingService {
     );
     return this.get(p, key);
   }
+  // Caller holds the existing active-owner guard; no nested transaction or raw facts.
+  async aiReference(tx: Transaction, p: SessionPrincipal, target: string) {
+    id(target);
+    const row = (
+      await tx.query<RequestRow>(
+        'SELECT * FROM app.report_requests WHERE user_id=$1 AND id=$2',
+        [p.userId, target],
+      )
+    ).rows[0];
+    if (!row) throw new PlatformFailure('not_found');
+    await this.request(tx, p, row);
+    const artifact = (
+      await tx.query<SnapshotRow>(
+        'SELECT * FROM app.report_snapshots WHERE user_id=$1 AND id=$2',
+        [p.userId, target],
+      )
+    ).rows[0];
+    if (!artifact || row.expires_at <= (await this.now(tx)))
+      throw new PlatformFailure('not_found');
+    if (
+      artifact.recorded_at !== row.recorded_at ||
+      artifact.expires_at !== row.expires_at
+    )
+      throw new PlatformFailure('integrity');
+    return {
+      generation: row.generation,
+      expiresAt: row.expires_at,
+      reportVersion: 1,
+    };
+  }
   async alchemistFacts(p: SessionPrincipal, target: string) {
     const v = await this.get(p, target);
     return {

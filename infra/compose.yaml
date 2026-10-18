@@ -15,6 +15,7 @@ x-node: &node
       target: /workspace/apps/api/node_modules
       volume: {nocopy: true}
     - ../.local/control:/run/forja-control
+    - ../.local/ai:/run/forja-ai:ro
   env_file: ../.env
   secrets:
     - api-password

@@ -1,3 +1,4 @@
+import { AiModule } from './ai/ai.module';
 import { ReportingModule } from './reporting/reporting.module';
 import { GameModule } from './game/game.module';
 import { WorkModule } from './work/work.module';
@@ -9,6 +10,7 @@ import { PlatformModule } from './platform/platform.module';
 import { IdentityModule } from './identity/identity.module';
 @Module({
   imports: [
+    AiModule,
     ReportingModule,
     GameModule,
     WorkModule,

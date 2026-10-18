@@ -17,7 +17,8 @@
     "format:check": "prettier --check src test *.json *.mjs",
     "test": "tsc -p tsconfig.test.json && node --test dist-test/test/*.test.js",
     "test:integration": "tsc -p tsconfig.test.json && node dist-test/test/integration/run.js",
-    "migrate": "npm run build && node dist/migrate.js"
+    "migrate": "npm run build && node dist/migrate.js",
+    "eval:ai": "tsc -p tsconfig.test.json && node dist-test/test/ai-evaluations.js"
   },
   "dependencies": {
     "@nestjs/common": "11.2.7",

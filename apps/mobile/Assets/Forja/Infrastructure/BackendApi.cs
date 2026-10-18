@@ -43,10 +43,10 @@ namespace Forja.Infrastructure
             }
             catch (JsonException) { throw new MobileFailure(Failure.Protocol); }
         }
-        private async Task<JObject> Send(string path, string access, JObject body, CancellationToken cancellation, bool missing = false, bool bounded = false, bool report = false)
+        private async Task<JObject> Send(string path, string access, JObject body, CancellationToken cancellation, bool missing = false, bool bounded = false, bool report = false, bool put = false)
         {
             using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellation))
-            using (var request = new HttpRequestMessage(body == null ? HttpMethod.Get : HttpMethod.Post, new Uri(origin, path)))
+            using (var request = new HttpRequestMessage(put ? HttpMethod.Put : body == null ? HttpMethod.Get : HttpMethod.Post, new Uri(origin, path)))
             {
                 timeout.CancelAfter(timeoutMilliseconds);
                 request.Headers.CacheControl = new CacheControlHeaderValue { NoStore = true };
@@ -102,6 +102,40 @@ namespace Forja.Infrastructure
             var tokens = new Tokens { Access = Text(value, "accessToken"), Refresh = Text(value, "refreshToken"), ExpiresIn = Integer(value, "expiresIn") };
             tokens.Validate(); return tokens;
         }
+        private static AiPreferences Preference(JObject value)
+        {
+            if (value["enabled"]?.Type != JTokenType.Boolean || value["providerAvailable"]?.Type != JTokenType.Boolean) throw new MobileFailure(Failure.Protocol);
+            return new AiPreferences { Enabled = (bool)value["enabled"], ProviderAvailable = (bool)value["providerAvailable"], Revision = Integer(value, "revision"), PolicyVersion = Text(value, "policyVersion"), Disclosure = Text(value, "disclosure") };
+        }
+        public async Task<AiPreferences> ReadAiPreferences(string access, CancellationToken cancellation) => Preference(await Send("v1/ai/preferences", access, null, cancellation));
+        public async Task<AiPreferences> SetAiPreferences(string access, AiPreferences previous, bool enabled, CancellationToken cancellation) => Preference(await Send("v1/ai/preferences", access,
+            new JObject { ["revision"] = previous.Revision, ["enabled"] = enabled, ["policyVersion"] = previous.PolicyVersion }, cancellation, put: true));
+        private static string Inert(JToken value, string key)
+        {
+            string text = Text(value, key);
+            if (text.Length > 600 || Regex.IsMatch(text, @"[<>\d]|https?://")) throw new MobileFailure(Failure.Protocol);
+            return text;
+        }
+        private static AiAnalysis Analysis(JObject value, string reportId)
+        {
+            var state = Text(value, "state");
+            if (System.Array.IndexOf(new[] { "RUNNING", "SUCCEEDED", "FAILED", "CANCELLED", "DISABLED", "UNAVAILABLE", "ABSENT", "EXPIRED", "INSUFFICIENT_CONTEXT", "THROTTLED" }, state) < 0 || Id(value, "reportId") != reportId || value["cached"]?.Type != JTokenType.Boolean) throw new MobileFailure(Failure.Protocol);
+            var result = new AiAnalysis { State = state, ReportId = reportId, Cached = (bool)value["cached"], ExecutionId = value["executionId"]?.Type == JTokenType.Null ? null : Id(value, "executionId") };
+            var narrative = value["narrative"];
+            if (state != "SUCCEEDED") { if (narrative?.Type != JTokenType.Null) throw new MobileFailure(Failure.Protocol); return result; }
+            if (Integer(narrative, "schema") != 1 || Text(narrative, "kind") != "AI_INTERPRETATION" || Text(narrative, "method") != "MODEL_SELECTED_REVIEWED_TEXT") throw new MobileFailure(Failure.Protocol);
+            result.Summary = Inert(narrative["summary"], "text");
+            void Lines(string key, System.Collections.Generic.List<string> lines, bool plain = false)
+            {
+                var items = Array(narrative, key); if (items.Count > 6) throw new MobileFailure(Failure.Protocol);
+                foreach (var item in items) lines.Add(Inert(plain ? new JObject { ["text"] = item } : item, "text"));
+            }
+            Lines("highlights", result.Highlights); Lines("attentionPoints", result.Attention); Lines("observations", result.Observations); Lines("questions", result.Questions, true); Lines("limitations", result.Limitations, true);
+            return result;
+        }
+        public async Task<AiAnalysis> ReadAlquimista(string access, string reportId, CancellationToken cancellation) => Analysis(await Send("v1/ai/alquimista/" + reportId, access, null, cancellation, report: true), reportId);
+        public async Task<AiAnalysis> RequestAlquimista(string access, string reportId, string key, string retryOf, CancellationToken cancellation) => Analysis(await Send("v1/ai/alquimista/" + reportId, access,
+            new JObject { ["requestKey"] = key, ["retryOf"] = retryOf == null ? JValue.CreateNull() : new JValue(retryOf) }, cancellation, report: true), reportId);
         public async Task Ready(CancellationToken cancellation)
         { var result = await Send("health/ready", null, null, cancellation); if (Text(result, "status") != "ok") throw new MobileFailure(Failure.Unavailable); }
         public async Task<AuthChallenge> Begin(string challenge, string intent, CancellationToken cancellation)

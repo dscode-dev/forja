@@ -10,7 +10,9 @@ export type SafeEvent =
   | 'identity.authentication'
   | 'data.integrity'
   | 'finance.anchor'
-  | 'reporting.retention';
+  | 'reporting.retention'
+  | 'ai.execution'
+  | 'ai.retention';
 // Identity events carry no principal, profile, provider response or token payload.
 export type SafeResult = 'success' | 'unavailable' | 'rejected';
 @Injectable()
@@ -32,6 +34,8 @@ export class SafeLogger implements LoggerService {
       'data.integrity',
       'finance.anchor',
       'reporting.retention',
+      'ai.execution',
+      'ai.retention',
     ];
     if (
       !events.includes(event) ||

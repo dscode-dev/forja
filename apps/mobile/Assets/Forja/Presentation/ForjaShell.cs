@@ -20,14 +20,15 @@ namespace Forja.Presentation
         private readonly Action<string, bool> evaluateMission;
         private readonly Action<ChronicleRequest> createChronicle;
         private readonly Action<string> openChronicle;
-        private readonly Action moreChronicles;
+        private readonly Action moreChronicles, refreshAi;
+        private readonly Action<bool> consentAi, analyzeAi;
         private string reportAccountId, reportFrom, reportThrough, reportType = "DAILY";
         private SessionCoordinator session;
         private bool configurationError;
-        public ForjaShell(VisualElement root, ShellNavigation navigation, Action<string> login, Action refresh, Action<bool> logout, Action<MissionCandidate> assignMission = null, Action<string, bool> evaluateMission = null, Action<ChronicleRequest> createChronicle = null, Action<string> openChronicle = null, Action moreChronicles = null)
+        public ForjaShell(VisualElement root, ShellNavigation navigation, Action<string> login, Action refresh, Action<bool> logout, Action<MissionCandidate> assignMission = null, Action<string, bool> evaluateMission = null, Action<ChronicleRequest> createChronicle = null, Action<string> openChronicle = null, Action moreChronicles = null, Action refreshAi = null, Action<bool> consentAi = null, Action<bool> analyzeAi = null)
         {
             this.root = root; this.navigation = navigation; this.login = login; this.refresh = refresh; this.logout = logout; this.assignMission = assignMission; this.evaluateMission = evaluateMission;
-            this.createChronicle = createChronicle; this.openChronicle = openChronicle; this.moreChronicles = moreChronicles;
+            this.createChronicle = createChronicle; this.openChronicle = openChronicle; this.moreChronicles = moreChronicles; this.refreshAi = refreshAi; this.consentAi = consentAi; this.analyzeAi = analyzeAi;
             art = Resources.Load<PresentationArt>("UI/PresentationArt");
             root.AddToClassList("shell"); root.styleSheets.Add(Resources.Load<StyleSheet>("UI/ForjaShell"));
         }
@@ -145,6 +146,47 @@ namespace Forja.Presentation
             parent.Add(ShellComponents.Text("Planejamento observado na geração · não representa a situação histórica das pendências no fim do período.", "caption"));
             Lines(parent, "Planejado · ainda não realizado", report.Planned);
             Lines(parent, "Contexto observado na geração · separado do dinheiro realizado", report.Context);
+            Alquimista(parent);
+        }
+        private void Alquimista(VisualElement parent)
+        {
+            var panel = ShellComponents.Panel("Alquimista", "INTERPRETAÇÃO POR IA · OPCIONAL");
+            panel.Add(ShellComponents.Text("Os fatos e valores estão no relatório acima. O modelo seleciona e organiza observações com texto revisado; não movimenta dinheiro.", "caption"));
+            parent.Add(panel);
+            if (session.AiError.HasValue) panel.Add(ShellComponents.Text("A consulta de IA não foi concluída. Sua crônica continua disponível."));
+            if (session.AiBusy) { panel.Add(ShellComponents.Text("Consultando o Alquimista… A crônica continua disponível.")); return; }
+            var preferences = session.AiPreferences;
+            if (preferences == null)
+            {
+                panel.Add(ShellComponents.Text("A IA começa desativada. Confira sua preferência e eventuais análises guardadas sem iniciar uma nova análise."));
+                panel.Add(ShellComponents.Action("Consultar preferência de IA", () => refreshAi?.Invoke(), refreshAi != null)); return;
+            }
+            panel.Add(ShellComponents.Text(preferences.Enabled ? "IA habilitada por você." : "IA desativada. Relatórios continuam disponíveis."));
+            panel.Add(ShellComponents.Action(preferences.Enabled ? "Desativar IA" : "Conhecer e habilitar IA", () =>
+            {
+                if (preferences.Enabled) consentAi?.Invoke(false);
+                else ShowSheet("Habilitar interpretação por IA", preferences.Disclosure, () => consentAi?.Invoke(true));
+            }, consentAi != null, "quiet"));
+            if (!preferences.Enabled) return;
+            var analysis = session.AiAnalysis;
+            if (analysis?.State == "SUCCEEDED")
+            {
+                panel.Add(ShellComponents.Text(analysis.Cached ? "Interpretação guardada para esta versão." : "Interpretação concluída para esta versão.", "caption"));
+                if (navigation.HiddenValues) panel.Add(ShellComponents.Text("Interpretação protegida. Use Mostrar valores para ler."));
+                else
+                {
+                    panel.Add(ShellComponents.Text(analysis.Summary));
+                    void Lines(string title, System.Collections.Generic.List<string> lines) { if (lines.Count == 0) return; panel.Add(ShellComponents.Text(title, "caption")); foreach (var line in lines) panel.Add(ShellComponents.Text(line)); }
+                    Lines("Destaques", analysis.Highlights); Lines("Pontos de atenção", analysis.Attention); Lines("Observações", analysis.Observations); Lines("Perguntas para refletir", analysis.Questions); Lines("Limitações", analysis.Limitations);
+                }
+            }
+            else
+            {
+                string state = analysis?.State;
+                panel.Add(ShellComponents.Text(!preferences.ProviderAvailable || state == "UNAVAILABLE" ? "O serviço de IA ainda não está disponível neste ambiente." : state == "RUNNING" ? "Uma análise está em andamento. Conferir o resultado não inicia outra chamada." : state == "FAILED" ? "A análise não foi concluída. Uma nova tentativa precisa ser solicitada por você." : state == "INSUFFICIENT_CONTEXT" ? "Esta crônica ainda não tem contexto suficiente para uma análise." : state == "THROTTLED" ? "Limite de análises atingido. Aguarde antes de tentar novamente." : state == "EXPIRED" || state == "CANCELLED" ? "Esta análise não está mais disponível." : "Nenhuma interpretação guardada. Você pode solicitar uma análise desta versão."));
+                if (preferences.ProviderAvailable && state != "RUNNING" && state != "INSUFFICIENT_CONTEXT") panel.Add(ShellComponents.Action(state == "FAILED" ? "Solicitar nova tentativa" : "Solicitar interpretação", () => analyzeAi?.Invoke(state == "FAILED"), analyzeAi != null));
+            }
+            panel.Add(ShellComponents.Action("Conferir análise guardada", () => refreshAi?.Invoke(), refreshAi != null, "quiet"));
         }
         private void Lines(VisualElement parent, string title, System.Collections.Generic.List<ChronicleLine> lines)
         {

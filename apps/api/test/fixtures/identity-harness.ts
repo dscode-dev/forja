@@ -1,3 +1,4 @@
+import { AI_PROVIDER, AiProvider } from '../../src/ai/provider';
 import { PrivacyErasure } from '../../src/platform/privacy-erasure';
 import 'reflect-metadata';
 import assert from 'node:assert/strict';
@@ -14,17 +15,18 @@ import { AUTH_CONTROL, AuthControl } from '../../src/platform/auth-control';
 import { IdentityService } from '../../src/identity/identity.service';
 import { migrationConfig } from '../../src/config/config';
 import { oidcFixture } from './oidc-server';
-export async function harness() {
+export async function harness(aiProvider?: AiProvider) {
   const fixture = await oidcFixture(process.env['FORJA_TEST_TLS_DIRECTORY']!);
   process.env['OIDC_ISSUER'] = fixture.issuer;
   process.env['OIDC_CLIENT_ID'] = 'forja-test-client';
   process.env['OIDC_REDIRECT_URI'] = 'com.darlan.forja.dev:/auth/callback';
   const lines: string[] = [];
   const known = new Set<string>();
-  const module = await Test.createTestingModule({ imports: [AppModule] })
+  const builder = Test.createTestingModule({ imports: [AppModule] })
     .overrideProvider(SafeLogger)
-    .useValue(new SafeLogger((line) => lines.push(line)))
-    .compile();
+    .useValue(new SafeLogger((line) => lines.push(line)));
+  if (aiProvider) builder.overrideProvider(AI_PROVIDER).useValue(aiProvider);
+  const module = await builder.compile();
   const app = module.createNestApplication<NestExpressApplication>({
     logger: false,
     bodyParser: false,

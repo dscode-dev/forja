@@ -122,10 +122,50 @@ namespace Forja.Tests
                 Assert.That(session.Chronicle, Is.Null); Assert.That(session.ChronicleError, Is.EqualTo(Failure.Offline));
             }
         }
+        [Test] public async Task AiIsExplicitMaskedAndFailuresPreserveDeterministicReport()
+        {
+            var api = new Api();
+            using (var session = new SessionCoordinator(api, new Store(), new Browser(), Settings()))
+            {
+                await session.Start(); await session.OpenChronicle("test-report");
+                await session.RefreshAi(); await session.Analyze(); Assert.That(api.AiCalls, Is.Zero);
+                await session.ConsentAi(true); Assert.That(api.AiCalls, Is.Zero);
+                await session.Analyze(); Assert.That(api.AiCalls, Is.EqualTo(1));
+                var root = new VisualElement(); var navigation = new ShellNavigation(); navigation.Go(ShellDestination.Reports);
+                var shell = new ForjaShell(root, navigation, _ => {}, () => {}, _ => {});
+                shell.Render(session, false); Assert.That(Text(root), Does.Contain("INTERPRETAÇÃO POR IA")); Assert.That(Text(root), Does.Not.Contain("Interpretação privada de teste"));
+                navigation.ToggleValues(); shell.Render(session, false); Assert.That(Text(root), Does.Contain("Interpretação privada de teste")); Assert.That(Text(root), Does.Contain("987,65"));
+                api.AiOffline = true; await session.Analyze();
+                Assert.That(session.AiError, Is.EqualTo(Failure.Offline)); Assert.That(session.Chronicle, Is.Not.Null); Assert.That(session.Snapshot, Is.Not.Null);
+                await session.OpenChronicle("test-report"); await session.RefreshAi(); Assert.That(api.AiCalls, Is.EqualTo(2));
+                session.Background(); Assert.That(session.AiAnalysis, Is.Null); Assert.That(session.AiPreferences, Is.Null);
+            }
+        }
+        [Test] public async Task AiLoadingDoesNotHideReportAndLateResponseCannotRestorePrivateMemory()
+        {
+            var api = new Api { AiEnabled = true, PendingAi = new TaskCompletionSource<AiAnalysis>() };
+            using (var session = new SessionCoordinator(api, new Store(), new Browser(), Settings()))
+            {
+                await session.Start(); await session.OpenChronicle("test-report"); await session.RefreshAi();
+                var pending = session.Analyze(); Assert.That(session.AiBusy, Is.True); Assert.That(session.Busy, Is.False);
+                var root = new VisualElement(); var navigation = new ShellNavigation(); navigation.Go(ShellDestination.Reports); navigation.ToggleValues();
+                var shell = new ForjaShell(root, navigation, _ => {}, () => {}, _ => {}); shell.Render(session, false);
+                Assert.That(Text(root), Does.Contain("987,65")); Assert.That(Text(root), Does.Contain("Consultando o Alquimista"));
+                session.Background(); api.PendingAi.SetResult(new AiAnalysis { State = "SUCCEEDED", Summary = "late private response" }); await pending;
+                Assert.That(session.AiAnalysis, Is.Null); Assert.That(session.Chronicle, Is.Null); Assert.That(session.AiBusy, Is.False);
+            }
+        }
         private static MobileSettings Settings() => new MobileSettings("development", "https://api.example.test", "", "", "com.darlan.forja.dev:/auth/callback");
         private static string Text(VisualElement root) => string.Join(" ", root.Query<Label>().ToList().Select(x => x.text));
         private sealed class Api : IBackendApi
         {
+            public bool AiEnabled, AiOffline; public int AiCalls;
+            public TaskCompletionSource<AiAnalysis> PendingAi;
+            public Task<AiPreferences> ReadAiPreferences(string a, CancellationToken c) => Task.FromResult(new AiPreferences { Enabled = AiEnabled, ProviderAvailable = true, Revision = 1, PolicyVersion = "forja.ai.v1", Disclosure = "Test-only disclosure" });
+            public Task<AiPreferences> SetAiPreferences(string a, AiPreferences previous, bool enabled, CancellationToken c) { AiEnabled = enabled; return ReadAiPreferences(a, c); }
+            public Task<AiAnalysis> ReadAlquimista(string a, string id, CancellationToken c) => Task.FromResult(new AiAnalysis { State = AiEnabled ? "ABSENT" : "DISABLED", ReportId = id });
+            public Task<AiAnalysis> RequestAlquimista(string a, string id, string key, string retry, CancellationToken c) { AiCalls++; if (AiOffline) throw new MobileFailure(Failure.Offline); return PendingAi?.Task ?? Task.FromResult(new AiAnalysis { State = "SUCCEEDED", ReportId = id, Summary = "Interpretação privada de teste" }); }
+
             public long ServerXp = 20; public bool Completed; public string AssignmentKey;
             public Task<ChronicleView> CreateChronicle(string a, ChronicleRequest r, string k, CancellationToken c) => throw new NotSupportedException();
             public bool ReportOffline;

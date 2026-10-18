@@ -77,6 +77,7 @@ try {
       'dist-test/test/integration/goals.test.js',
       'dist-test/test/integration/game.test.js',
       'dist-test/test/integration/reporting.test.js',
+      'dist-test/test/integration/ai.test.js',
     ],
     { stdio: 'inherit', env },
   );

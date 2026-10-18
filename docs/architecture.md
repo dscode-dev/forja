@@ -16,7 +16,7 @@ Redis requires a documented technical need; pgvector requires a documented seman
 | Work | [Work/career profile, availability, declared capacity and versioned user-confirmed assumptions](domains/work.md) | Identity; canonical Finance money value functions only |
 | Game | Character state, missions, progression and virtual rewards | Identity, Finance/Planning/Work public read contracts or committed facts |
 | Reporting | [Period rules, deterministic summaries and immutable Crônicas](domains/reporting.md) | Identity, Finance/Planning/Work/Game public read contracts |
-| AI | Character advice, model context preparation and inference orchestration | Identity, approved minimized read contracts from Reporting/Planning/Work/Game |
+| AI | [Character advice, minimized context, consent and bounded inference](domains/ai.md); Alquimista v1 owns no financial writes | Identity and Reporting public source/facts contracts; later agents require separately authorized Planning/Work/Game reads |
 
 Platform capabilities provide persistence, configuration, cryptographic services, observability and transport; they are infrastructure, not owners of financial or game rules. Their finalized [security contract](security.md) requires external KMS and independent lifecycle control capabilities; implementation evidence is gated by [PR-00.SEC](prs/PR-00.SEC.md).
 

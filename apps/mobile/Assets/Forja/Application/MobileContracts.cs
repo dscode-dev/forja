@@ -6,6 +6,10 @@ namespace Forja.Application
 {
     public interface IBackendApi
     {
+        Task<AiPreferences> ReadAiPreferences(string access, CancellationToken cancellation);
+        Task<AiPreferences> SetAiPreferences(string access, AiPreferences previous, bool enabled, CancellationToken cancellation);
+        Task<AiAnalysis> ReadAlquimista(string access, string reportId, CancellationToken cancellation);
+        Task<AiAnalysis> RequestAlquimista(string access, string reportId, string key, string retryOf, CancellationToken cancellation);
         Task Ready(CancellationToken cancellation);
         Task<AuthChallenge> Begin(string challenge, string intent, CancellationToken cancellation);
         Task<Tokens> Complete(AuthChallenge challenge, string verifier, string code, CancellationToken cancellation);

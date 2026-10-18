@@ -26,7 +26,7 @@ Use the pinned Editor with `-batchmode -nographics -projectPath <isolated-projec
 
 ## MANUAL MOBILE VALIDATION REQUIRED
 
-Current PR-10.A: [Reporting/Crônicas evidence](prs/PR-10.A.md); native execution and physical/private acceptance remain separate.
+Current PR-09.A: [Alquimista evidence](prs/PR-09.A.md); native execution and physical/private acceptance remain separate.
 
 Historical PR-08: [mission/progression evidence](prs/PR-08.md) governs the journey surface; no physical/private acceptance is inferred from native tests.
 
@@ -65,8 +65,16 @@ Manual Game acceptance requires actual HTTPS/OIDC and legitimate user-confirmed 
 
 ## PR-10.A Crônicas
 
-[Reporting contract](contracts/reporting.md) owns numerical/period semantics. Crônicas uses the real retained list/detail and explicit four-type generation command, account/currency selection, server-supplied local today/timezone, civil-date input and bounded continuation. Server data supplies settled/planned/comparison/goal/Work/Game values; client only formats decimal strings with frozen locale/precision and masks monetary/percentage values before Label creation. Old required-income calculations retain their own currency and horizon. No AI entry, narrative, local aggregation or generated sample report.
+[Reporting contract](contracts/reporting.md) owns numerical/period semantics. Crônicas uses the real retained list/detail and explicit four-type generation command, account/currency selection, server-supplied local today/timezone, civil-date input and bounded continuation. Server data supplies settled/planned/comparison/goal/Work/Game values; client only formats decimal strings with frozen locale/precision and masks monetary/percentage values before Label creation. Old required-income calculations retain their own currency and horizon. PR-10.A itself introduced no AI entry or narrative; PR-09.A adds the optional panel described below. No local aggregation or generated sample report.
 
 SessionCoordinator owns transient detail, cancellation/epoch/renewal and domain-specific offline/timeout/input/expiry states; failures never show a stale detail or partial total. Background/logout resets snapshots, detail/errors and selector state; no report/account selection is persisted. Shared loading/privacy/Safe Area/navigation behavior remains. Generation uses a random UUIDv4, no uncertain automatic write retry; refresh/list reconciliation exposes committed artifacts.
 
 Manual acceptance follows the eight steps above. With actual HTTPS/OIDC and legitimate data, inspect empty/list/detail, all four period selectors (including invalid dates), pagination, retained-versus-regenerated versions, realized/planned labels, calculation currency/horizon and virtual XP separation. Check scrolling, Safe Area, masked/revealed values, offline/error recovery, three background/resume/relaunch cycles and switcher privacy; measure existing 60-second CPU/memory/frame baseline without private captures. No fake financial input/report may be introduced to populate this check. Authenticated data remains blocked without real configuration.
+
+## PR-09.A Alquimista
+
+The [AI contract](contracts/ai.md) adds an optional panel below deterministic Crônicas. “Consultar preferência de IA” / “Conferir análise guardada” are safe authenticated GETs; opening/navigation/rendering/consent enable never dispatches inference. Disclosure confirmation is required before opt-in; disable revokes future processing. “Solicitar interpretação” is an explicit POST with a fresh UUID; failed execution retry is a separate explicit action. There is no automatic polling/write retry, generated preview or production fake response.
+
+SessionCoordinator owns a separate AI loading/error state: the report remains visible on AI timeout/offline/unavailable. Memory/epoch guards discard late responses after source change/background/logout; no AI data enters device storage. AI narrative is inert text, clearly labeled model interpretation/reviewed wording, and entirely hidden by the existing value mask because qualitative signals infer private financial state too. Shared scrolling/Safe Area/native privacy applies.
+
+Current manual acceptance: [PR-09.A](prs/PR-09.A.md), using the eight steps above. Verify disabled/unconfigured and preference/error states, separate authoritative values, loading without report loss, text/scroll/Safe Area, explicit retry, no extra invocation on reopen, three lifecycle cycles/switcher privacy and the existing quantitative baseline. Real success/cache/provider-failure checks require approved provider plus reachable HTTPS/OIDC and legitimate inputs; they remain BLOCKED while external calls are explicitly disabled. No synthetic financial data or AI narrative may populate the physical product to bypass these gates.

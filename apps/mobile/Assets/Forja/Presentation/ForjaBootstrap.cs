@@ -35,7 +35,10 @@ namespace Forja.Presentation
                 (id, cancel) => Observe(session.EvaluateMission(id, cancel)),
                 request => Observe(session.CreateChronicle(request)),
                 id => Observe(session.OpenChronicle(id)),
-                () => Observe(session.MoreChronicles()));
+                () => Observe(session.MoreChronicles()),
+                () => Observe(session.RefreshAi()),
+                enabled => Observe(session.ConsentAi(enabled)),
+                retry => Observe(session.Analyze(retry)));
             root.RegisterCallback<GeometryChangedEvent>(_ => ApplySafeArea());
             try
             {

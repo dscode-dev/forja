@@ -200,4 +200,16 @@ namespace Forja.Core
         }
         public static int Digits(string currency) => currency == "JPY" ? 0 : currency == "KWD" ? 3 : 2;
     }
+    public sealed class AiPreferences
+    { public bool Enabled, ProviderAvailable; public int Revision; public string PolicyVersion, Disclosure; }
+    public sealed class AiAnalysis
+    {
+        public string State, ExecutionId, ReportId, Summary;
+        public bool Cached;
+        public readonly List<string> Highlights = new List<string>();
+        public readonly List<string> Attention = new List<string>();
+        public readonly List<string> Observations = new List<string>();
+        public readonly List<string> Questions = new List<string>();
+        public readonly List<string> Limitations = new List<string>();
+    }
 }

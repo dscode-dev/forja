@@ -55,4 +55,4 @@ assert '    iPhone: com.darlan.forja.dev' in player
 assert 'insecureHttpOption: 0' in player
 assert 'activeInputHandler: 0' in player
 print(f'PASS static Unity structure: {len(assemblies)} assemblies; {len(guids)} unique asset GUIDs; scene/build references; version and security settings')
-print('STATIC ONLY: this command does not establish native compilation/tests/build/device success; executed gate evidence is recorded in docs/prs/PR-10.A.md (PR-01 holds historical baseline)')
+print('STATIC ONLY: this command does not establish native compilation/tests/build/device success; executed gate evidence is recorded in docs/prs/PR-09.A.md (PR-01 holds historical baseline)')

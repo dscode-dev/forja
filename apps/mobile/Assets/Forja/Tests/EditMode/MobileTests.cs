@@ -163,6 +163,13 @@ namespace Forja.Tests
         {public string Callback;public Task<string> Authorize(string a,string s,CancellationToken c)=>Task.FromResult(Callback);public void Cancel(){}}
         private sealed class Api : IBackendApi
         {
+            public bool AiEnabled, AiOffline; public int AiCalls;
+            public TaskCompletionSource<AiAnalysis> PendingAi;
+            public Task<AiPreferences> ReadAiPreferences(string a, CancellationToken c) => Task.FromResult(new AiPreferences { Enabled = AiEnabled, ProviderAvailable = true, Revision = 1, PolicyVersion = "forja.ai.v1", Disclosure = "Test-only disclosure" });
+            public Task<AiPreferences> SetAiPreferences(string a, AiPreferences previous, bool enabled, CancellationToken c) { AiEnabled = enabled; return ReadAiPreferences(a, c); }
+            public Task<AiAnalysis> ReadAlquimista(string a, string id, CancellationToken c) => Task.FromResult(new AiAnalysis { State = AiEnabled ? "ABSENT" : "DISABLED", ReportId = id });
+            public Task<AiAnalysis> RequestAlquimista(string a, string id, string key, string retry, CancellationToken c) { AiCalls++; if (AiOffline) throw new MobileFailure(Failure.Offline); return PendingAi?.Task ?? Task.FromResult(new AiAnalysis { State = "SUCCEEDED", ReportId = id, Summary = "Interpretação privada de teste" }); }
+
             public Task<ChronicleView> CreateChronicle(string a, ChronicleRequest r, string k, CancellationToken c) => throw new NotSupportedException();
             public Task<ChronicleView> ReadChronicle(string a, string id, CancellationToken c) => throw new NotSupportedException();
             public Task<ChroniclePage> ReadChronicles(string a, int after, CancellationToken c) => throw new NotSupportedException();
