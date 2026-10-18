@@ -8,7 +8,7 @@ using System.Text.RegularExpressions;
 namespace Forja.Core
 {
     public enum SessionState { BOOTSTRAPPING, UNAUTHENTICATED, AUTHENTICATING, AUTHENTICATED, SESSION_EXPIRED, DEGRADED, FATAL_CONFIGURATION_ERROR }
-    public enum Failure { Offline, Timeout, Unauthorized, StepUp, Unavailable, Protocol, Configuration, Cancelled }
+    public enum Failure { Offline, Timeout, Unauthorized, StepUp, Unavailable, Protocol, Configuration, Cancelled, InvalidPeriod, ChronicleExpired }
     public sealed class MobileFailure : Exception
     {
         public Failure Kind { get; }
@@ -56,6 +56,8 @@ namespace Forja.Core
         public string AccountNext, GoalNext;
         public ForecastView Forecast;
         public GameView Game;
+        public ChroniclePage Chronicles;
+        public string ReportToday, ReportTimezone;
     }
     public sealed class AccountView
     {
@@ -86,6 +88,22 @@ namespace Forja.Core
     { public string Template, GoalId; public int? GoalRevision; }
     public sealed class MissionView
     { public string Id, Title, Description, State, ExpiresAt, RecordedAt, Reconciliation, Current, Target; public int RewardXp; public bool Financial; }
+    public sealed class ChroniclePage
+    { public readonly List<ChronicleItem> Items = new List<ChronicleItem>(); public int? Next; }
+    public sealed class ChronicleItem
+    { public string Id, AccountId, Currency, Type, From, Through, GeneratedAt, ExpiresAt; public int Generation; }
+    public sealed class ChronicleView
+    {
+        public ChronicleItem Item; public string Timezone; public bool Partial;
+        public readonly List<ChronicleLine> Realized = new List<ChronicleLine>();
+        public readonly List<ChronicleLine> Planned = new List<ChronicleLine>();
+        public readonly List<ChronicleLine> Comparisons = new List<ChronicleLine>();
+        public readonly List<ChronicleLine> Context = new List<ChronicleLine>();
+    }
+    public sealed class ChronicleLine
+    { public string Label, Value; public bool Financial = true; }
+    public sealed class ChronicleRequest
+    { public string AccountId, Type, From, Through; }
     public enum FinancialMeaning { Settled, Projected, Receivable, Payable, GoalFunding, WorkCapacity }
     public static class FinancialLabels
     {
@@ -158,6 +176,27 @@ namespace Forja.Core
             bool negative = minor[0] == '-'; string value = negative ? minor.Substring(1) : minor;
             value = value.PadLeft(digits + 1, '0');
             return currency + " " + (negative ? "−" : "") + (digits == 0 ? value : value.Substring(0, value.Length - digits) + "," + value.Substring(value.Length - digits));
+        }
+        private static string DecimalDisplay(string minor, int digits, string locale)
+        {
+            CultureInfo culture;
+            try { culture = CultureInfo.GetCultureInfo(locale); } catch (CultureNotFoundException) { throw new MobileFailure(Failure.Protocol); }
+            bool negative = minor.StartsWith("-", StringComparison.Ordinal); string value = negative ? minor.Substring(1) : minor;
+            value = value.PadLeft(digits + 1, '0');
+            string whole = digits == 0 ? value : value.Substring(0, value.Length - digits);
+            string display = decimal.Parse(whole, CultureInfo.InvariantCulture).ToString("N0", culture);
+            return (negative ? culture.NumberFormat.NegativeSign : "") + display + (digits == 0 ? "" : culture.NumberFormat.NumberDecimalSeparator + value.Substring(value.Length - digits));
+        }
+        public static string FormatLocale(string minor, string currency, string locale)
+        {
+            // Exact decimal-string formatting only; no totals or rates are calculated here.
+            Format(minor, currency, Digits(currency));
+            return currency + " " + DecimalDisplay(minor, Digits(currency), locale);
+        }
+        public static string Percentage(string basisPoints, string locale)
+        {
+            if (!Regex.IsMatch(basisPoints ?? "", "^-?(0|[1-9][0-9]{0,23})$") || basisPoints == "-0") throw new MobileFailure(Failure.Protocol);
+            return DecimalDisplay(basisPoints, 2, locale) + "%";
         }
         public static int Digits(string currency) => currency == "JPY" ? 0 : currency == "KWD" ? 3 : 2;
     }

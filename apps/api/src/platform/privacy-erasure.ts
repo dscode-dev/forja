@@ -5,11 +5,12 @@ import { PlatformFailure } from './failure';
 @Injectable()
 export class PrivacyErasure {
   private readonly consumers = new Map<
-    'finance' | 'planning' | 'work' | 'planning-goals' | 'game',
+    'finance' | 'planning' | 'work' | 'planning-goals' | 'game' | 'reporting',
     (tx: Transaction, owner: string) => Promise<void>
   >();
   register(
-    name: 'finance' | 'planning' | 'work' | 'planning-goals' | 'game',
+    name:
+      'finance' | 'planning' | 'work' | 'planning-goals' | 'game' | 'reporting',
     purge: (tx: Transaction, owner: string) => Promise<void>,
   ): void {
     if (this.consumers.has(name)) throw new PlatformFailure('conflict');
@@ -18,6 +19,7 @@ export class PrivacyErasure {
   async erase(tx: Transaction, owner: string): Promise<void> {
     await tx.query("SELECT set_config('forja.erase_user',$1,true)", [owner]);
     for (const name of [
+      'reporting',
       'game',
       'planning-goals',
       'planning',

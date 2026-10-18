@@ -1143,4 +1143,168 @@ export class FinanceService {
       };
     });
   }
+  // Reporting owns composition; Finance alone authenticates buckets, boundary events and balances.
+  async reportFacts(
+    u: FinanceReadUnitOfWork,
+    accountId: string,
+    periods: { start: string; end: string }[],
+    budget: import('../platform/read-budget').ReadBudget,
+  ) {
+    const { row, value } = await this.requireAccount(u, accountId),
+      earliest = periods[0]!.start.slice(0, 10);
+    const rows = (
+      await u.tx.query<BucketRow>(
+        'SELECT * FROM app.finance_buckets WHERE user_id=$1 AND account_id=$2 AND day>=$3 ORDER BY day LIMIT $4',
+        [u.principal.userId, row.id, earliest, budget.remaining() + 1],
+      )
+    ).rows;
+    budget.take(rows.length);
+    const missing = await u.tx.query(
+      'SELECT e.id FROM app.finance_events e WHERE e.user_id=$1 AND e.account_id=$2 AND left(e.effective_at,10)>=$3 AND NOT EXISTS(SELECT 1 FROM app.finance_buckets b WHERE b.user_id=e.user_id AND b.account_id=e.account_id AND b.day=left(e.effective_at,10)) LIMIT 1',
+      [u.principal.userId, row.id, earliest],
+    );
+    if (missing.rowCount) throw new PlatformFailure('integrity');
+    const buckets: ({ day: string } & ReturnType<typeof bucket>)[] = [];
+    for (const r of rows) {
+      const b = await this.records.open(
+        u.principal,
+        r,
+        'finance.bucket',
+        row.id,
+        this.bMeta(r),
+        bucket,
+        u.tx,
+      );
+      const cpRow = (
+        await u.tx.query<EncryptedRow>(
+          'SELECT * FROM app.finance_checkpoints WHERE user_id=$1 AND seq=$2',
+          [u.principal.userId, r.last_seq],
+        )
+      ).rows[0];
+      const latest = (
+        await u.tx.query<{ seq: string }>(
+          'SELECT seq FROM app.finance_events WHERE user_id=$1 AND account_id=$2 AND left(effective_at,10)=$3 ORDER BY seq DESC LIMIT 1',
+          [u.principal.userId, row.id, r.day],
+        )
+      ).rows[0];
+      if (!cpRow || latest?.seq !== r.last_seq)
+        throw new PlatformFailure('integrity');
+      const cp = await this.records.open(
+        u.principal,
+        cpRow,
+        'finance.checkpoint',
+        u.principal.userId,
+        [Number(r.last_seq)],
+        checkpoint,
+        u.tx,
+      );
+      if (
+        cp.bucketHash !==
+        hash([row.id, r.day, r.revision, Number(r.last_seq), b])
+      )
+        throw new PlatformFailure('integrity');
+      buckets.push({ day: r.day, ...b });
+    }
+    const boundaries = [
+      ...new Set(
+        periods
+          .flatMap((p) => [p.start, p.end])
+          .filter((t) => !t.endsWith('T00:00:00.000Z'))
+          .map((t) => t.slice(0, 10)),
+      ),
+    ];
+    const events: { at: string; value: FinancialEvent }[] = [];
+    for (const day of boundaries) {
+      const es = (
+        await u.tx.query<EventRow>(
+          'SELECT * FROM app.finance_events WHERE user_id=$1 AND account_id=$2 AND effective_at>=$3 AND effective_at<$4 ORDER BY effective_at,seq LIMIT $5',
+          [
+            u.principal.userId,
+            row.id,
+            day + 'T00:00:00.000Z',
+            new Date(Date.parse(day) + 86400000).toISOString(),
+            budget.remaining() + 1,
+          ],
+        )
+      ).rows;
+      budget.take(es.length);
+      for (const r of es)
+        events.push({
+          at: r.effective_at,
+          value: await this.records.open(
+            u.principal,
+            r,
+            'finance.event',
+            r.id,
+            this.eMeta(r),
+            event,
+            u.tx,
+          ),
+        });
+    }
+    const metrics = periods.map((p) => {
+      let income = '0',
+        expense = '0';
+      for (const b of buckets) {
+        const start = b.day + 'T00:00:00.000Z',
+          end = new Date(Date.parse(start) + 86400000).toISOString();
+        if (start >= p.start && end <= p.end) {
+          income = add(income, b.incomeMinor);
+          expense = add(expense, b.expenseMinor);
+        }
+      }
+      for (const e of events)
+        if (e.at >= p.start && e.at < p.end) {
+          const day = e.at.slice(0, 10),
+            start = day + 'T00:00:00.000Z',
+            end = new Date(Date.parse(start) + 86400000).toISOString();
+          if (start >= p.start && end <= p.end) continue;
+          if (e.value.classification === 'income')
+            income = add(income, e.value.deltaMinor);
+          if (e.value.classification === 'expense')
+            expense = add(expense, (-minor(e.value.deltaMinor)).toString());
+        }
+      const before = (at: string) => {
+        if (at <= value.openedAt) return '0';
+        let balance = value.balanceMinor;
+        for (const b of buckets)
+          if (
+            b.day > at.slice(0, 10) ||
+            (b.day === at.slice(0, 10) && at.endsWith('T00:00:00.000Z'))
+          )
+            balance = add(balance, (-minor(b.contributionMinor)).toString());
+        if (!at.endsWith('T00:00:00.000Z'))
+          for (const e of events)
+            if (
+              e.at.slice(0, 10) === at.slice(0, 10) &&
+              e.at >= at &&
+              e.value.classification !== 'baseline'
+            )
+              balance = add(balance, (-minor(e.value.deltaMinor)).toString());
+        return balance;
+      };
+      const openingMinor = before(p.start),
+        closingMinor = before(p.end),
+        netMinor = add(income, (-minor(expense)).toString());
+      return {
+        incomeMinor: income,
+        expenseMinor: expense,
+        netMinor,
+        openingMinor,
+        closingMinor,
+        baselineChangeMinor: add(
+          add(closingMinor, (-minor(openingMinor)).toString()),
+          (-minor(netMinor)).toString(),
+        ),
+      };
+    });
+    return {
+      accountId: row.id,
+      currency: row.currency,
+      accountRevision: row.revision,
+      accountCursor: Number(row.last_seq),
+      financeCursor: u.seq,
+      metrics,
+    };
+  }
 }

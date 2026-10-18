@@ -20,6 +20,8 @@ namespace Forja.Application
         private int generation;
         public SessionState State { get; private set; } = SessionState.BOOTSTRAPPING;
         public ShellSnapshot Snapshot { get; private set; }
+        public ChronicleView Chronicle { get; private set; }
+        public Failure? ChronicleError { get; private set; }
         public Failure? Error { get; private set; }
         public bool Busy => busy;
         public bool CanLogin => settings.OidcConfigured;
@@ -29,7 +31,7 @@ namespace Forja.Application
         private void Set(SessionState state, Failure? error = null)
         { State = state; Error = error; Changed?.Invoke(); }
         private void ResetMemory()
-        { generation++; lifetime.Cancel(); lifetime.Dispose(); lifetime = new CancellationTokenSource(); access = null; Snapshot = null; }
+        { generation++; lifetime.Cancel(); lifetime.Dispose(); lifetime = new CancellationTokenSource(); access = null; Snapshot = null; Chronicle = null; ChronicleError = null; }
         private void Check(int epoch)
         { if (epoch != generation || disposed || suspended) throw new OperationCanceledException(); }
         public Task Start() => Run(async () =>
@@ -108,9 +110,38 @@ namespace Forja.Application
                 Snapshot = null; access = null; await Renew();
                 result = await api.Read(access, lifetime.Token);
             }
-            Check(epoch); Snapshot = result; Set(SessionState.AUTHENTICATED);
+            Check(epoch); Chronicle = null; Snapshot = result; Set(SessionState.AUTHENTICATED);
         }
         public Task Reload() => Run(Load);
+        private Task RunChronicle(Func<Task> action) => Run(async () =>
+        {
+            int epoch = generation; ChronicleError = null;
+            try { await action(); }
+            catch (MobileFailure failure) when (failure.Kind == Failure.Offline || failure.Kind == Failure.Timeout || failure.Kind == Failure.Unavailable || failure.Kind == Failure.InvalidPeriod || failure.Kind == Failure.ChronicleExpired)
+            { Check(epoch); Chronicle = null; ChronicleError = failure.Kind; Set(SessionState.AUTHENTICATED); }
+        });
+        public Task CreateChronicle(ChronicleRequest request) => RunChronicle(async () =>
+        {
+            int epoch = generation; Chronicle = null;
+            await Renew(); Check(epoch);
+            var result = await api.CreateChronicle(access, request, Guid.NewGuid().ToString("D"), lifetime.Token);
+            Check(epoch); await Load(); Check(epoch); Chronicle = result;
+        });
+        public Task OpenChronicle(string id) => RunChronicle(async () =>
+        {
+            int epoch = generation; Chronicle = null;
+            await Renew(); Check(epoch);
+            var result = await api.ReadChronicle(access, id, lifetime.Token);
+            Check(epoch); Chronicle = result; Set(SessionState.AUTHENTICATED);
+        });
+        public Task MoreChronicles() => RunChronicle(async () =>
+        {
+            if (Snapshot?.Chronicles?.Next == null) return;
+            int epoch = generation, after = Snapshot.Chronicles.Next.Value;
+            await Renew(); Check(epoch);
+            var result = await api.ReadChronicles(access, after, lifetime.Token);
+            Check(epoch); Snapshot.Chronicles = result; Chronicle = null; Set(SessionState.AUTHENTICATED);
+        });
         public Task AssignMission(MissionCandidate candidate) => Run(async () =>
         {
             int epoch = generation;
@@ -165,12 +196,12 @@ namespace Forja.Application
             catch (MobileFailure failure)
             {
                 if (epoch != generation || suspended || disposed) return;
-                Snapshot = null;
+                Snapshot = null; Chronicle = null;
                 if (failure.Kind == Failure.Unauthorized)
                 { access = null; await store.DeleteAsync(CancellationToken.None); Set(SessionState.SESSION_EXPIRED, failure.Kind); }
                 else Set(failure.Kind == Failure.Configuration ? SessionState.FATAL_CONFIGURATION_ERROR : failure.Kind == Failure.StepUp ? SessionState.AUTHENTICATED : SessionState.DEGRADED, failure.Kind);
             }
-            catch { if (epoch == generation && !suspended && !disposed) { Snapshot = null; access = null; Set(SessionState.DEGRADED, Failure.Unavailable); } }
+            catch { if (epoch == generation && !suspended && !disposed) { Snapshot = null; Chronicle = null; access = null; Set(SessionState.DEGRADED, Failure.Unavailable); } }
             finally { if (epoch == generation) busy = false; Changed?.Invoke(); }
         }
         public void Dispose()

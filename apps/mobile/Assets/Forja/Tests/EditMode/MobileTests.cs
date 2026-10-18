@@ -163,6 +163,9 @@ namespace Forja.Tests
         {public string Callback;public Task<string> Authorize(string a,string s,CancellationToken c)=>Task.FromResult(Callback);public void Cancel(){}}
         private sealed class Api : IBackendApi
         {
+            public Task<ChronicleView> CreateChronicle(string a, ChronicleRequest r, string k, CancellationToken c) => throw new NotSupportedException();
+            public Task<ChronicleView> ReadChronicle(string a, string id, CancellationToken c) => throw new NotSupportedException();
+            public Task<ChroniclePage> ReadChronicles(string a, int after, CancellationToken c) => throw new NotSupportedException();
             public Task AssignMission(string a, MissionCandidate m, string k, CancellationToken c) => throw new NotSupportedException();
             public Task EvaluateMission(string a, string id, bool cancel, CancellationToken c) => throw new NotSupportedException();
 

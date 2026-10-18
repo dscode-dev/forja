@@ -51,7 +51,7 @@ namespace Forja.Tests
                 navigation.Go(ShellDestination.Goals); shell.Render(session, false);
                 Assert.That(root.Query<Label>().ToList().Any(x => x.text == "Você ainda não tem metas cadastradas."), Is.True);
                 navigation.Go(ShellDestination.Reports); shell.Render(session, false);
-                Assert.That(root.Query<Label>().ToList().Any(x => x.text.Contains("relatórios ainda não estão disponíveis")), Is.True);
+                Assert.That(root.Query<Label>().ToList().Any(x => x.text.Contains("Nenhuma crônica nesta página")), Is.True);
                 await session.Logout(); shell.Render(session, false);
                 Assert.That(session.Snapshot, Is.Null);
                 Assert.That(root.Query<Label>().ToList().Any(x => x.text.Contains("private fixture")), Is.False);
@@ -97,16 +97,52 @@ namespace Forja.Tests
                 Assert.That(root.Query<Label>().ToList().Any(x => x.text.Contains("XP creditado")), Is.False);
             }
         }
+        [Test] public async Task ChronicleDetailIsServerOwnedAndClearedOnBackground()
+        {
+            using (var session = new SessionCoordinator(new Api(), new Store(), new Browser(), Settings()))
+            {
+                await session.Start(); await session.OpenChronicle("test-report");
+                Assert.That(session.Chronicle.Realized[0].Value, Is.EqualTo("BRL 987,65"));
+                var root = new VisualElement(); var navigation = new ShellNavigation();
+                var shell = new ForjaShell(root, navigation, _ => {}, () => {}, _ => {});
+                navigation.Go(ShellDestination.Reports); shell.Render(session, false);
+                Assert.That(Text(root), Does.Not.Contain("987,65"));
+                navigation.ToggleValues(); shell.Render(session, false); Assert.That(Text(root), Does.Contain("987,65"));
+                session.Background(); shell.Render(session, false); Assert.That(session.Chronicle, Is.Null); Assert.That(Text(root), Does.Not.Contain("987,65"));
+            }
+        }
+        [Test] public async Task ChronicleOfflineFailureKeepsAuthenticatedShellAndShowsNoStaleDetail()
+        {
+            var api = new Api();
+            using (var session = new SessionCoordinator(api, new Store(), new Browser(), Settings()))
+            {
+                await session.Start(); await session.OpenChronicle("test-report"); api.ReportOffline = true;
+                await session.OpenChronicle("test-report");
+                Assert.That(session.State, Is.EqualTo(SessionState.AUTHENTICATED)); Assert.That(session.Snapshot, Is.Not.Null);
+                Assert.That(session.Chronicle, Is.Null); Assert.That(session.ChronicleError, Is.EqualTo(Failure.Offline));
+            }
+        }
+        private static MobileSettings Settings() => new MobileSettings("development", "https://api.example.test", "", "", "com.darlan.forja.dev:/auth/callback");
+        private static string Text(VisualElement root) => string.Join(" ", root.Query<Label>().ToList().Select(x => x.text));
         private sealed class Api : IBackendApi
         {
             public long ServerXp = 20; public bool Completed; public string AssignmentKey;
+            public Task<ChronicleView> CreateChronicle(string a, ChronicleRequest r, string k, CancellationToken c) => throw new NotSupportedException();
+            public bool ReportOffline;
+            public Task<ChronicleView> ReadChronicle(string a, string id, CancellationToken c)
+            {
+                if (ReportOffline) throw new MobileFailure(Failure.Offline);
+                var result = new ChronicleView { Item = new ChronicleItem { Id = id, Type = "DAILY", Generation = 1, From = "2026-03-08", Through = "2026-03-08" }, Timezone = "UTC" };
+                result.Realized.Add(new ChronicleLine { Label = "Receitas realizadas", Value = "BRL 987,65" }); return Task.FromResult(result);
+            }
+            public Task<ChroniclePage> ReadChronicles(string a, int after, CancellationToken c) => throw new NotSupportedException();
             public Task AssignMission(string a, MissionCandidate m, string k, CancellationToken c) { AssignmentKey = k; return Task.CompletedTask; }
             public Task EvaluateMission(string a, string id, bool cancel, CancellationToken c) => throw new NotSupportedException();
 
             public Task Ready(CancellationToken c) => Task.CompletedTask;
             public Task<Tokens> Refresh(string r, CancellationToken c) => Task.FromResult(new Tokens { Access = new string('a',43), Refresh = new string('b',43), ExpiresIn = 300 });
             public Task<ShellSnapshot> Read(string a, CancellationToken c)
-            { var result = new ShellSnapshot { Name = "private fixture name" }; result.Game = new GameView { Xp = ServerXp, Level = 1, NextLevelXp = 100, XpToNextLevel = 30 };
+            { var result = new ShellSnapshot { Name = "private fixture name", ReportToday = "2026-10-17", ReportTimezone = "UTC", Chronicles = new ChroniclePage() }; result.Game = new GameView { Xp = ServerXp, Level = 1, NextLevelXp = 100, XpToNextLevel = 30 };
                 if (Completed) result.Game.History.Add(new MissionView { Id = "test mission", Title = "test completed mission", Description = "test objective", State = "COMPLETED", RewardXp = 50, Current = "Perfil confirmado", Target = "Confirmar perfil", Reconciliation = "UNCHANGED", ExpiresAt = "2026-11-05T12:00:00.000Z" });
                 result.Accounts.Add(new AccountView { Name = "private fixture account", State = "active", Balance = "BRL 123,45" }); return Task.FromResult(result); }
             public Task Revoke(string a, bool all, CancellationToken c) => Task.CompletedTask;

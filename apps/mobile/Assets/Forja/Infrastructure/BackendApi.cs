@@ -43,7 +43,7 @@ namespace Forja.Infrastructure
             }
             catch (JsonException) { throw new MobileFailure(Failure.Protocol); }
         }
-        private async Task<JObject> Send(string path, string access, JObject body, CancellationToken cancellation, bool missing = false, bool bounded = false)
+        private async Task<JObject> Send(string path, string access, JObject body, CancellationToken cancellation, bool missing = false, bool bounded = false, bool report = false)
         {
             using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellation))
             using (var request = new HttpRequestMessage(body == null ? HttpMethod.Get : HttpMethod.Post, new Uri(origin, path)))
@@ -59,6 +59,8 @@ namespace Forja.Infrastructure
                     {
                         int status = (int)response.StatusCode;
                         if (response.Headers.CacheControl?.NoStore != true) throw new MobileFailure(Failure.Protocol);
+                        if (report && status == 400) throw new MobileFailure(Failure.InvalidPeriod);
+                        if (report && status == 404) throw new MobileFailure(Failure.ChronicleExpired);
                         if (status == 404 && missing) return null;
                         if (status == 422 && bounded) throw new MobileFailure(Failure.Unavailable);
                         if (!response.IsSuccessStatusCode) throw new MobileFailure(Map(status));
@@ -172,6 +174,10 @@ namespace Forja.Infrastructure
             }
             snapshot.GoalNext = goals["next"]?.Type == JTokenType.Null ? null : Id(goals, "next");
             snapshot.Game = await ReadGame(access, snapshot.Goals.Count == 0 ? null : snapshot.Goals[0].Id, cancellation);
+            var periods = await Send("v1/reports/periods", access, null, cancellation);
+            if (Integer(periods, "reportVersion") != 1) throw new MobileFailure(Failure.Protocol);
+            snapshot.ReportToday = Text(periods, "today"); snapshot.ReportTimezone = Text(periods, "timezone");
+            snapshot.Chronicles = await ReadChronicles(access, 0, cancellation);
             return snapshot;
         }
         private static long LongInteger(JToken value, string key)
@@ -228,6 +234,84 @@ namespace Forja.Infrastructure
         {
             if (!Guid.TryParseExact(id, "D", out _)) throw new MobileFailure(Failure.Protocol);
             await Send("v1/game/missions/" + id + (cancel ? "/cancel" : "/evaluate"), access, new JObject(), cancellation);
+        }
+        private static ChronicleItem ChronicleItem(JToken item, bool detail)
+        {
+            var period = item["period"]; string type = Text(period, "type");
+            if (type != "DAILY" && type != "WEEKLY" && type != "MONTHLY" && type != "CUSTOM") throw new MobileFailure(Failure.Protocol);
+            return new ChronicleItem { Id = Id(item, "id"), AccountId = detail ? Id(item["request"], "accountId") : Id(item, "accountId"),
+                Currency = detail ? Text(item["finance"], "currency") : Text(item, "currency"), Generation = Integer(item, "generation"), Type = type,
+                From = Text(period["current"], "from"), Through = Text(period["current"], "through"), GeneratedAt = Text(item, "generatedAt"), ExpiresAt = Text(item, "expiresAt") };
+        }
+        public async Task<ChroniclePage> ReadChronicles(string access, int after, CancellationToken cancellation)
+        {
+            if (after < 0) throw new MobileFailure(Failure.Protocol);
+            var value = await Send("v1/reports/chronicles?limit=20&after=" + after.ToString(System.Globalization.CultureInfo.InvariantCulture), access, null, cancellation);
+            var page = new ChroniclePage();
+            foreach (var item in Array(value, "chronicles")) page.Items.Add(ChronicleItem(item, false));
+            page.Next = value["next"]?.Type == JTokenType.Null ? (int?)null : Integer(value, "next");
+            if (page.Next.HasValue && page.Next.Value <= after) throw new MobileFailure(Failure.Protocol);
+            return page;
+        }
+        private static ChronicleView Chronicle(JObject value)
+        {
+            if (Integer(value, "reportVersion") != 1) throw new MobileFailure(Failure.Protocol);
+            var result = new ChronicleView { Item = ChronicleItem(value, true), Timezone = Text(value["period"], "timezone") };
+            if (value["period"]?["partial"]?.Type != JTokenType.Boolean) throw new MobileFailure(Failure.Protocol);
+            result.Partial = (bool)value["period"]["partial"];
+            string currency = result.Item.Currency, locale = Text(value, "locale");
+            void Money(System.Collections.Generic.List<ChronicleLine> lines, string label, JToken source, string key)
+            { lines.Add(new ChronicleLine { Label = label, Value = source?[key]?.Type == JTokenType.Null ? "Não disponível" : MoneyDisplay.FormatLocale(Text(source, key), currency, locale) }); }
+            var settled = value["settled"];
+            Money(result.Realized, "Receitas realizadas", settled, "incomeMinor"); Money(result.Realized, "Despesas realizadas", settled, "expenseMinor");
+            Money(result.Realized, "Resultado líquido", settled, "netMinor"); Money(result.Realized, "Saldo antes do período", settled, "openingMinor");
+            Money(result.Realized, "Saldo ao fim / até geração", settled, "closingMinor"); Money(result.Realized, "Saldo inicial declarado no período", settled, "baselineChangeMinor");
+            var planning = value["planning"];
+            Money(result.Planned, "Renda prevista · não recebida", planning, "predictedIncomeMinor"); Money(result.Planned, "A receber · não recebido", planning, "receivableMinor");
+            Money(result.Planned, "Débitos agendados · não pagos", planning, "scheduledDebitMinor"); Money(result.Planned, "A pagar · não pago", planning, "payableMinor"); Money(result.Planned, "Fluxo líquido planejado", planning, "plannedNetMinor");
+            foreach (string key in new[] { "income", "expense", "net" })
+            {
+                var metric = value["comparisons"]?[key]; string title = key == "income" ? "Receitas" : key == "expense" ? "Despesas" : "Resultado";
+                Money(result.Comparisons, title + " · diferença absoluta", metric, "deltaMinor");
+                string percentage = metric?["percentageBasisPoints"]?.Type == JTokenType.Null ? "Sem percentual: base anterior zero" : MoneyDisplay.Percentage(Text(metric, "percentageBasisPoints"), locale);
+                result.Comparisons.Add(new ChronicleLine { Label = title + " · variação / base anterior absoluta", Value = percentage });
+            }
+            if (value["goal"] is JObject goal)
+            {
+                Money(result.Context, "Meta · atribuído realizado na geração", goal, "creditedMinor"); Money(result.Context, "Meta · déficit na geração", goal, "remainingMinor");
+                if (goal["calculation"] is JObject calculation)
+                {
+                    string calculationCurrency = Text(calculation, "currency");
+                    foreach (string scenario in new[] { "conservative", "planned" }) result.Context.Add(new ChronicleLine { Label = scenario == "conservative" ? "Renda adicional conservadora · cálculo registrado" : "Renda adicional planejada · cálculo registrado", Value = calculation[scenario]?["requiredGrossMinor"]?.Type == JTokenType.Null ? "Não disponível" : MoneyDisplay.FormatLocale(Text(calculation[scenario], "requiredGrossMinor"), calculationCurrency, locale) });
+                    result.Context.Add(new ChronicleLine { Label = "Horizonte próprio do cálculo de renda", Value = Text(calculation, "from") + " a " + Text(calculation, "through") + " · " + Text(calculation, "timezone") + " · registrado em " + Text(calculation, "asOf"), Financial = false });
+                    if (calculation["stale"]?.Type != JTokenType.Boolean) throw new MobileFailure(Failure.Protocol);
+                    result.Context.Add(new ChronicleLine { Label = "Cálculo de renda", Value = (bool)calculation["stale"] ? "Fontes mudaram · cálculo anterior preservado" : "Referências compatíveis na geração", Financial = false });
+                }
+            }
+            if (value["reserve"] is JObject reserve) Money(result.Context, "Reserva declarada · atribuído na geração", reserve, "creditedMinor");
+            if (value["work"] is JObject work)
+            {
+                string workCurrency = Text(work, "currency");
+                result.Context.Add(new ChronicleLine { Label = "Capacidade declarada · cenário sobre datas do relatório", Value = work["totalMinor"]?.Type == JTokenType.Null ? "Não disponível" : MoneyDisplay.FormatLocale(Text(work, "totalMinor"), workCurrency, locale) });
+                Money(result.Context, "Receita realizada menos capacidade declarada", work, "incomeMinusCapacityMinor");
+            }
+            var game = value["game"];
+            result.Context.Add(new ChronicleLine { Label = "XP virtual recebido no período", Value = LongInteger(game, "xpGained").ToString(), Financial = false });
+            result.Context.Add(new ChronicleLine { Label = "Missões concluídas no período", Value = Integer(game, "missionsCompleted").ToString(), Financial = false });
+            result.Context.Add(new ChronicleLine { Label = "Nível na geração", Value = LongInteger(game, "level").ToString(), Financial = false });
+            return result;
+        }
+        public async Task<ChronicleView> ReadChronicle(string access, string id, CancellationToken cancellation)
+        {
+            if (!Guid.TryParseExact(id, "D", out _)) throw new MobileFailure(Failure.Protocol);
+            var result = Chronicle(await Send("v1/reports/chronicles/" + id, access, null, cancellation, report: true));
+            if (result.Item.Id != id) throw new MobileFailure(Failure.Protocol); return result;
+        }
+        public async Task<ChronicleView> CreateChronicle(string access, ChronicleRequest request, string key, CancellationToken cancellation)
+        {
+            if (!Guid.TryParseExact(request.AccountId, "D", out _) || !Guid.TryParseExact(key, "D", out _) || (request.Type != "DAILY" && request.Type != "WEEKLY" && request.Type != "MONTHLY" && request.Type != "CUSTOM")) throw new MobileFailure(Failure.Protocol);
+            var result = Chronicle(await Send("v1/reports/" + request.Type.ToLowerInvariant(), access, new JObject { ["idempotencyKey"] = key, ["accountId"] = request.AccountId, ["from"] = request.From, ["through"] = request.Through }, cancellation, bounded: true, report: true));
+            if (result.Item.Id != key || result.Item.AccountId != request.AccountId || result.Item.Type != request.Type) throw new MobileFailure(Failure.Protocol); return result;
         }
         public void Dispose() => client.Dispose();
     }

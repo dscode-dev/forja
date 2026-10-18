@@ -32,7 +32,10 @@ namespace Forja.Presentation
                 () => Observe(session.State == SessionState.AUTHENTICATED ? session.Reload() : session.Start()),
                 all => Observe(session.Logout(all)),
                 candidate => Observe(session.AssignMission(candidate)),
-                (id, cancel) => Observe(session.EvaluateMission(id, cancel)));
+                (id, cancel) => Observe(session.EvaluateMission(id, cancel)),
+                request => Observe(session.CreateChronicle(request)),
+                id => Observe(session.OpenChronicle(id)),
+                () => Observe(session.MoreChronicles()));
             root.RegisterCallback<GeometryChangedEvent>(_ => ApplySafeArea());
             try
             {

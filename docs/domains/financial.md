@@ -31,7 +31,7 @@ Daily/weekly/monthly/custom periods need explicit timezone and boundary rules. S
 
 ## Decisions required by dependent PRs
 
-PR-04.A finalizes the ledger and basic expectation semantics below. [Planning goals/required-income rules](planning.md) are established by PR-05.B; expected-item revision/partial realization, partial reserve allocations and transfers remain separately scoped. Before Reporting: period rules, restatement and formula provenance. Financial-data encryption follows the finalized [security contract](../security.md).
+PR-04.A finalizes the ledger and basic expectation semantics below. [Planning goals/required-income rules](planning.md) are established by PR-05.B; expected-item revision/partial realization, partial reserve allocations and transfers remain separately scoped. [Reporting](reporting.md) now owns period rules, restatement knowledge and report formula provenance. Financial-data encryption follows the finalized [security contract](../security.md).
 
 ## Encrypted financial state and bounded reads
 
@@ -94,3 +94,5 @@ Pending receivable/payable with dueAt strictly before server evaluatedAt is over
 Planning's bounded summary takes one active account and an explicit future/current UTC horizon; closed accounts reject this realization scenario. Under the same Finance snapshot guard, baseline is its authenticated **current settled** balance; select all pending items with dueAt ≤ horizon, including overdue items. Sum exact magnitudes separately as predicted income, receivables, scheduled debits and payables; incoming = predicted + receivable, outgoing = scheduled + payable, projected = settled + (incoming − outgoing). Overdue receivable/payable subtotals use evaluatedAt/asOf. This is a mechanical **estimate** assuming full realization of every selected pending amount, no probability, interest, FX or automatic receipt. It never changes available/settled balance or defines work-capacity/goal formulas.
 
 Return currency, rule=1, asOf/horizon, Finance/account cursor and revision plus each expected input ID/revision. Those inputs identify the coherent snapshot; same snapshot/time/horizon yields the same result. Require at most 1,000 selected expectations; beyond it return explicit BOUNDED_PERIOD_REQUIRED, never a truncated total. Forecast jobs/period UX remain later work. Summary is authorized runtime S3 derived from encrypted facts, not persisted/cache/log content. Reserve allocation/balance is not inferred from a savings account; PR-05 owns that distinct model.
+
+Reporting consumes Finance.reportFacts within the public snapshot guard, composing authenticated buckets/checkpoints and selected partial-day events; no Finance writes. [Reporting](reporting.md) owns local period, correction knowledge and bounded tail/boundary semantics.

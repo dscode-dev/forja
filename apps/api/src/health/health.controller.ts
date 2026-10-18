@@ -1,3 +1,4 @@
+import { ReportingService } from '../reporting/reporting.service';
 import { GameService } from '../game/game.service';
 import { GoalsService } from '../planning/goals/goals.service';
 import { WorkService } from '../work/work.service';
@@ -17,6 +18,7 @@ import { AUTH_CONTROL, AuthControl } from '../platform/auth-control';
 export class HealthController {
   constructor(
     private readonly database: Database,
+    private readonly reporting: ReportingService,
     private readonly game: GameService,
     private readonly finance: FinanceService,
     private readonly planning: PlanningService,
@@ -41,7 +43,8 @@ export class HealthController {
       !(await this.planning.ready()) ||
       !(await this.work.ready()) ||
       !(await this.goals.ready()) ||
-      !(await this.game.ready())
+      !(await this.game.ready()) ||
+      !(await this.reporting.ready())
     )
       throw new ServiceUnavailableException();
     return { status: 'ok' };

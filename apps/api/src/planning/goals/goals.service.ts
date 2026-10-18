@@ -610,43 +610,51 @@ export class GoalsService {
   ) {
     id(target);
     if (calculationId !== null) id(calculationId);
-    return this.read(p, async (tx) => {
-      const row = (
-        await tx.query<CalculationRow>(
-          'SELECT * FROM app.planning_goal_calculations WHERE user_id=$1 AND goal_id=$2 AND ($3::uuid IS NULL OR id=$3) ORDER BY generation DESC LIMIT 1',
-          [p.userId, target, calculationId],
+    return this.read(p, (tx) =>
+      this.reportCalculation(tx, p, target, calculationId),
+    );
+  }
+  private async reportCalculation(
+    tx: Transaction,
+    p: SessionPrincipal,
+    target: string,
+    calculationId: string | null,
+  ) {
+    const row = (
+      await tx.query<CalculationRow>(
+        'SELECT * FROM app.planning_goal_calculations WHERE user_id=$1 AND goal_id=$2 AND ($3::uuid IS NULL OR id=$3) ORDER BY generation DESC LIMIT 1',
+        [p.userId, target, calculationId],
+      )
+    ).rows[0];
+    if (!row) throw new PlatformFailure('not_found');
+    const input = await this.records.open(
+      p,
+      row,
+      'planning.goal-calculation',
+      row.id,
+      this.calcMeta(row),
+      (raw) => {
+        const value = calculationInput(raw);
+        if (
+          value.goalRevision !== row.goal_revision ||
+          (value.work?.revision ?? null) !== row.work_revision ||
+          value.identityProfileRevision !== row.identity_revision ||
+          value.finance.cursor !== Number(row.finance_cursor) ||
+          value.asOf !== row.recorded_at ||
+          value.formulaVersion !== row.formula
         )
-      ).rows[0];
-      if (!row) throw new PlatformFailure('not_found');
-      const input = await this.records.open(
-        p,
-        row,
-        'planning.goal-calculation',
-        row.id,
-        this.calcMeta(row),
-        (raw) => {
-          const value = calculationInput(raw);
-          if (
-            value.goalRevision !== row.goal_revision ||
-            (value.work?.revision ?? null) !== row.work_revision ||
-            value.identityProfileRevision !== row.identity_revision ||
-            value.finance.cursor !== Number(row.finance_cursor) ||
-            value.asOf !== row.recorded_at ||
-            value.formulaVersion !== row.formula
-          )
-            throw new PlatformFailure('integrity');
-          return value;
-        },
-        tx,
-      );
-      return {
-        calculationId: row.id,
-        goalId: target,
-        generation: row.generation,
-        recordedAt: row.recorded_at,
-        ...calculate(input),
-      };
-    });
+          throw new PlatformFailure('integrity');
+        return value;
+      },
+      tx,
+    );
+    return {
+      calculationId: row.id,
+      goalId: target,
+      generation: row.generation,
+      recordedAt: row.recorded_at,
+      ...calculate(input),
+    };
   }
   async generate(
     p: SessionPrincipal,
@@ -869,6 +877,61 @@ export class GoalsService {
       days: v.days,
       conservative: v.conservative,
       planned: v.planned,
+    };
+  }
+  async reportFacts(u: FinanceReadUnitOfWork, accountId: string) {
+    const rows = (
+      await u.tx.query<Head>(
+        "SELECT * FROM app.planning_goals WHERE user_id=$1 AND account_id=$2 AND allocation='reserved' LIMIT 2",
+        [u.principal.userId, accountId],
+      )
+    ).rows;
+    if (rows.length > 1) throw new PlatformFailure('integrity');
+    const head = rows[0];
+    if (!head) return null;
+    const g = await this.load(u.tx, u.principal, head.id),
+      a = await this.finance.requireAccount(u, accountId);
+    const calculationRow = (
+      await u.tx.query<CalculationRow>(
+        'SELECT * FROM app.planning_goal_calculations WHERE user_id=$1 AND goal_id=$2 ORDER BY generation DESC LIMIT 1',
+        [u.principal.userId, head.id],
+      )
+    ).rows[0];
+    const calc = calculationRow
+      ? await this.reportCalculation(
+          u.tx,
+          u.principal,
+          head.id,
+          calculationRow.id,
+        )
+      : null;
+    return {
+      goalId: head.id,
+      revision: g.revision,
+      status: g.status,
+      currency: g.goal.currency,
+      targetMinor: g.goal.targetMinor,
+      ...progress(g.goal.targetMinor, a.value.balanceMinor),
+      calculation: calc
+        ? {
+            calculationId: calc.calculationId,
+            generation: calc.generation,
+            formulaVersion: calc.formulaVersion,
+            goalRevision: calc.goalRevision,
+            workRevision: calc.workRevision,
+            financeCursor: calc.financeCursor,
+            asOf: calc.asOf,
+            currency: calc.currency,
+            from: calc.from,
+            through: calc.through,
+            timezone: calc.timezone,
+            identityProfileRevision: calc.identityProfileRevision,
+            conservative: calc.conservative,
+            planned: calc.planned,
+            stale:
+              calc.goalRevision !== g.revision || calc.financeCursor !== u.seq,
+          }
+        : null,
     };
   }
 }

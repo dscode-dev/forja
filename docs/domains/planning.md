@@ -39,3 +39,5 @@ Internal advisoryFacts returns only deterministic scenario deficits/rates/capaci
 Latest pointer must match latest authenticated history; missing/replayed selectors fail closed. Existing financial journal checks remain intact. Goals/calculations have no new independent freshness anchor: privileged deletion/replay of a complete valid suffix remains a documented residual risk. Include all snapshots/receipts/calculations and old key references in backup recovery/key migration/authorized erasure before deployment/retirement.
 
 Game consumes the minimized [missionFacts application read](../contracts/game.md) inside the already guarded Finance snapshot: goal state/configuration/revision and authenticated settled funding only. Planning writes no Game record and exposes no expected/projected money as settled mission evidence.
+
+Reporting consumes the minimized pending-summary and exclusive-goal/latest-calculation reads inside the existing owner-guarded unit. It preserves the calculation’s own currency/horizon/references and never invokes recalculation; [Reporting](reporting.md) owns frozen artifact semantics.

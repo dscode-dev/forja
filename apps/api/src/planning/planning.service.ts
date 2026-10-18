@@ -549,4 +549,59 @@ export class PlanningService {
     }
     return inputs;
   }
+  async reportFacts(
+    u: FinanceReadUnitOfWork,
+    accountId: string,
+    c: Currency,
+    start: string,
+    end: string,
+    budget: import('../platform/read-budget').ReadBudget,
+  ) {
+    const rows = (
+      await u.tx.query<ExpectedRow>(
+        "SELECT * FROM app.planning_expected WHERE user_id=$1 AND account_id=$2 AND state='pending' AND due_at>=$3 AND due_at<$4 ORDER BY due_at,id LIMIT $5",
+        [u.principal.userId, accountId, start, end, budget.remaining() + 1],
+      )
+    ).rows;
+    budget.take(rows.length);
+    let predictedIncomeMinor = '0',
+      receivableMinor = '0',
+      scheduledDebitMinor = '0',
+      payableMinor = '0';
+    const references = [];
+    for (const r of rows) {
+      const v = await this.records.open(
+        u.principal,
+        r,
+        'planning.expected',
+        r.id,
+        this.meta(r),
+        expected,
+        u.tx,
+      );
+      await this.authenticateAudit(u.tx, u.principal, r, v);
+      await this.finance.assertUnsettled(u, r.id);
+      if (r.currency !== c) throw new PlatformFailure('integrity');
+      if (v.kind === 'predicted-income')
+        predictedIncomeMinor = add(predictedIncomeMinor, v.amountMinor);
+      if (v.kind === 'receivable')
+        receivableMinor = add(receivableMinor, v.amountMinor);
+      if (v.kind === 'scheduled-debit')
+        scheduledDebitMinor = add(scheduledDebitMinor, v.amountMinor);
+      if (v.kind === 'payable') payableMinor = add(payableMinor, v.amountMinor);
+      references.push({ id: r.id, revision: r.revision });
+    }
+    return {
+      observation: 'pending-at-generation' as const,
+      predictedIncomeMinor,
+      receivableMinor,
+      scheduledDebitMinor,
+      payableMinor,
+      plannedNetMinor: add(
+        add(predictedIncomeMinor, receivableMinor),
+        (-minor(add(scheduledDebitMinor, payableMinor))).toString(),
+      ),
+      references,
+    };
+  }
 }

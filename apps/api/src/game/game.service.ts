@@ -666,4 +666,69 @@ export class GameService {
       },
     );
   }
+  async reportFacts(
+    tx: Transaction,
+    p: SessionPrincipal,
+    start: string,
+    end: string,
+    goal: {
+      goalId: string;
+      accountId: string;
+      targetMinor: string;
+      currency: string;
+    } | null,
+    budget: import('../platform/read-budget').ReadBudget,
+  ) {
+    await this.integrity(tx, p);
+    const current = await this.xp(tx, p);
+    const rows = (
+      await tx.query<AwardRow>(
+        'SELECT * FROM app.game_awards WHERE user_id=$1 AND recorded_at>=$2 AND recorded_at<$3 ORDER BY recorded_at,seq LIMIT $4',
+        [p.userId, start, end, budget.remaining() + 1],
+      )
+    ).rows;
+    budget.take(rows.length);
+    let xpGained = 0;
+    for (const r of rows) {
+      const a = await this.records.open(
+        p,
+        r,
+        'game.award',
+        r.mission_id,
+        this.awardMeta(r),
+        award,
+        tx,
+      );
+      await this.load(tx, p, r.mission_id);
+      xpGained += a.xp;
+    }
+    integer(xpGained, Number.MAX_SAFE_INTEGER);
+    let reserveGoalId: string | null = null;
+    if (goal) {
+      const r = (
+        await tx.query<Head>(
+          'SELECT * FROM app.game_missions WHERE user_id=$1 AND source_id=$2',
+          [p.userId, goal.goalId],
+        )
+      ).rows[0];
+      if (r) {
+        const m = (await this.load(tx, p, r.id)).value;
+        if (
+          m.template === 'RESERVE_TARGET' &&
+          ['ACTIVE', 'COMPLETED'].includes(m.state) &&
+          m.basis.accountId === goal.accountId &&
+          m.basis.targetMinor === goal.targetMinor &&
+          m.basis.currency === goal.currency
+        )
+          reserveGoalId = goal.goalId;
+      }
+    }
+    return {
+      awardSequence: current.seq,
+      ...progression(current.totalXp),
+      xpGained,
+      missionsCompleted: rows.length,
+      reserveGoalId,
+    };
+  }
 }

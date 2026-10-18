@@ -18,11 +18,16 @@ namespace Forja.Presentation
         private readonly PresentationArt art;
         private readonly Action<MissionCandidate> assignMission;
         private readonly Action<string, bool> evaluateMission;
+        private readonly Action<ChronicleRequest> createChronicle;
+        private readonly Action<string> openChronicle;
+        private readonly Action moreChronicles;
+        private string reportAccountId, reportFrom, reportThrough, reportType = "DAILY";
         private SessionCoordinator session;
         private bool configurationError;
-        public ForjaShell(VisualElement root, ShellNavigation navigation, Action<string> login, Action refresh, Action<bool> logout, Action<MissionCandidate> assignMission = null, Action<string, bool> evaluateMission = null)
+        public ForjaShell(VisualElement root, ShellNavigation navigation, Action<string> login, Action refresh, Action<bool> logout, Action<MissionCandidate> assignMission = null, Action<string, bool> evaluateMission = null, Action<ChronicleRequest> createChronicle = null, Action<string> openChronicle = null, Action moreChronicles = null)
         {
             this.root = root; this.navigation = navigation; this.login = login; this.refresh = refresh; this.logout = logout; this.assignMission = assignMission; this.evaluateMission = evaluateMission;
+            this.createChronicle = createChronicle; this.openChronicle = openChronicle; this.moreChronicles = moreChronicles;
             art = Resources.Load<PresentationArt>("UI/PresentationArt");
             root.AddToClassList("shell"); root.styleSheets.Add(Resources.Load<StyleSheet>("UI/ForjaShell"));
         }
@@ -40,6 +45,7 @@ namespace Forja.Presentation
             var header = new VisualElement(); header.AddToClassList("header");
             header.Add(ShellComponents.Text("Forja", "brand"));
             bool authenticated = value?.State == SessionState.AUTHENTICATED && value.Snapshot != null;
+            if (!authenticated) { reportAccountId = reportFrom = reportThrough = null; reportType = "DAILY"; }
             if (authenticated) header.Add(ShellComponents.Action(navigation.HiddenValues ? "Mostrar valores" : "Ocultar valores", () => { navigation.ToggleValues(); Redraw(); }, true, "quiet"));
             root.Add(header);
             var scroll = new ScrollView(ScrollViewMode.Vertical); scroll.AddToClassList("content"); root.Add(scroll);
@@ -78,11 +84,73 @@ namespace Forja.Presentation
                 case ShellDestination.Accounts: Accounts(scroll, snapshot); break;
                 case ShellDestination.Work: Work(scroll, snapshot); break;
                 case ShellDestination.Reports:
-                    scroll.Add(ShellComponents.State("Crônicas do seu caminho", "Os relatórios ainda não estão disponíveis. Eles serão construídos a partir do seu histórico financeiro real.")); break;
+                    Chronicles(scroll, snapshot); break;
                 case ShellDestination.Profile: Profile(scroll); break;
                 case ShellDestination.Missions: Journey(scroll, snapshot); break;
             }
             Nav();
+        }
+        private static string PeriodTitle(string type) => type == "DAILY" ? "Diário" : type == "WEEKLY" ? "Semanal" : type == "MONTHLY" ? "Mensal" : "Personalizado";
+        private void Chronicles(VisualElement parent, ShellSnapshot snapshot)
+        {
+            parent.Add(ShellComponents.Text("Crônicas do seu caminho", "hero-title"));
+            parent.Add(ShellComponents.Text("Relatos determinísticos do seu histórico. Cada versão permanece igual enquanto disponível por sete dias.", "caption"));
+            if (snapshot.Accounts.Count == 0) parent.Add(ShellComponents.State("Um caminho ainda por registrar", "Nenhuma conta real disponível para gerar uma crônica."));
+            else
+            {
+                if (!snapshot.Accounts.Exists(a => a.Id == reportAccountId)) reportAccountId = snapshot.Accounts[0].Id;
+                reportFrom = reportFrom ?? snapshot.ReportToday; reportThrough = reportThrough ?? snapshot.ReportToday;
+                var selector = ShellComponents.Panel("Escolher período", "O servidor resolve as datas no seu fuso: " + snapshot.ReportTimezone);
+                var choices = new System.Collections.Generic.List<string>(); int selectedAccount = 0;
+                for (int i = 0; i < snapshot.Accounts.Count; i++) { choices.Add((i + 1) + " · " + snapshot.Accounts[i].Name + " · " + snapshot.Accounts[i].Currency); if (snapshot.Accounts[i].Id == reportAccountId) selectedAccount = i; }
+                var account = new DropdownField("Conta", choices, selectedAccount);
+                account.RegisterValueChangedCallback(e => reportAccountId = snapshot.Accounts[choices.IndexOf(e.newValue)].Id); selector.Add(account);
+                var types = new System.Collections.Generic.List<string> { "Diário", "Semanal", "Mensal", "Personalizado" };
+                var codes = new[] { "DAILY", "WEEKLY", "MONTHLY", "CUSTOM" };
+                var period = new DropdownField("Período", types, System.Array.IndexOf(codes, reportType));
+                period.RegisterValueChangedCallback(e => { reportType = codes[types.IndexOf(e.newValue)]; Redraw(); }); selector.Add(period);
+                var from = new TextField(reportType == "CUSTOM" ? "De · AAAA-MM-DD" : "Data de referência · AAAA-MM-DD") { value = reportFrom, maxLength = 10 };
+                from.RegisterValueChangedCallback(e => reportFrom = e.newValue); selector.Add(from);
+                if (reportType == "CUSTOM") { var through = new TextField("Até · AAAA-MM-DD") { value = reportThrough, maxLength = 10 }; through.RegisterValueChangedCallback(e => reportThrough = e.newValue); selector.Add(through); }
+                selector.Add(ShellComponents.Action("Gerar nova versão", () => createChronicle?.Invoke(new ChronicleRequest { AccountId = reportAccountId, Type = reportType, From = reportFrom, Through = reportType == "CUSTOM" ? reportThrough : reportFrom }), createChronicle != null)); parent.Add(selector);
+                if (snapshot.AccountNext != null) parent.Add(ShellComponents.Text("Seleção limitada às primeiras 100 contas carregadas.", "caption"));
+            }
+            if (session.ChronicleError.HasValue)
+            {
+                var failure = session.ChronicleError.Value;
+                string message = failure == Failure.InvalidPeriod ? "Confira as datas no formato AAAA-MM-DD e o intervalo de até 366 dias." : failure == Failure.ChronicleExpired ? "Esta versão expirou ou foi removida. Atualize a lista ou gere uma nova versão." : failure == Failure.Offline ? "Você está sem conexão. Reconecte para consultar as crônicas." : "A consulta não foi concluída. Tente novamente ou reduza o período; nenhum total parcial foi exibido.";
+                parent.Add(ShellComponents.State("Crônica indisponível", message));
+                parent.Add(ShellComponents.Action("Atualizar lista", refresh));
+            }
+            var page = snapshot.Chronicles;
+            if (page == null) parent.Add(ShellComponents.State("Crônicas indisponíveis", "Atualize a conexão para consultar o histórico."));
+            else
+            {
+                if (page.Items.Count == 0) parent.Add(ShellComponents.State("Nenhuma crônica nesta página", "Gere uma versão usando seus dados reais. Versões expiradas não aparecem aqui."));
+                foreach (var item in page.Items)
+                {
+                    var chosen = item;
+                    var panel = ShellComponents.Panel(PeriodTitle(item.Type) + " · versão " + item.Generation, item.From + " a " + item.Through + " · " + item.Currency);
+                    panel.Add(ShellComponents.Text("Gerada em " + item.GeneratedAt + " · disponível até " + item.ExpiresAt, "caption"));
+                    panel.Add(ShellComponents.Action("Ler crônica", () => openChronicle?.Invoke(chosen.Id), openChronicle != null)); parent.Add(panel);
+                }
+                if (page.Next.HasValue) parent.Add(ShellComponents.Action("Próxima página de crônicas", () => moreChronicles?.Invoke(), moreChronicles != null, "quiet"));
+            }
+            var report = session.Chronicle; if (report == null) return;
+            parent.Add(ShellComponents.Text(PeriodTitle(report.Item.Type) + " · versão " + report.Item.Generation, "hero-title"));
+            parent.Add(ShellComponents.Text(report.Item.From + " a " + report.Item.Through + " · " + report.Timezone, "caption"));
+            if (report.Partial) parent.Add(ShellComponents.State("Período em andamento", "Fatos realizados até a geração. A comparação usa o período civil anterior completo, sem normalização."));
+            Lines(parent, "Realizado · fatos financeiros", report.Realized);
+            Lines(parent, "Comparação com período anterior", report.Comparisons);
+            parent.Add(ShellComponents.Text("Planejamento observado na geração · não representa a situação histórica das pendências no fim do período.", "caption"));
+            Lines(parent, "Planejado · ainda não realizado", report.Planned);
+            Lines(parent, "Contexto observado na geração · separado do dinheiro realizado", report.Context);
+        }
+        private void Lines(VisualElement parent, string title, System.Collections.Generic.List<ChronicleLine> lines)
+        {
+            var panel = ShellComponents.Panel(title);
+            foreach (var line in lines) { panel.Add(ShellComponents.Text(line.Label, "caption")); panel.Add(ShellComponents.Text(line.Financial ? FinancialLabels.Value(line.Value, navigation.HiddenValues) : line.Value, "amount")); }
+            parent.Add(panel);
         }
         private void Redraw() => Render(session, configurationError);
         private void Go(ShellDestination destination) { navigation.Go(destination); Redraw(); }
